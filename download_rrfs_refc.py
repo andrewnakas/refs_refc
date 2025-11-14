@@ -236,26 +236,37 @@ def download_file(url: str, out_path: Path) -> bool:
         return False
 
 
-def clean_old_files(max_files: int = MAX_FILES):
+def clean_old_files(keep_latest_cycle: bool = False):
     """
-    Remove oldest files to maintain rolling storage limit.
+    Remove old files. If keep_latest_cycle is True, removes ALL existing files
+    to make room for the new cycle. Otherwise keeps files from the current cycle.
 
     Args:
-        max_files: Maximum number of files to keep
+        keep_latest_cycle: If True, delete all existing files before download
     """
-    grib_files = sorted(DATA_DIR.glob("*.grib2"), key=lambda x: x.stat().st_mtime)
+    grib_files = list(DATA_DIR.glob("*.grib2"))
 
-    if len(grib_files) > max_files:
-        files_to_remove = len(grib_files) - max_files
-        print(f"\nCleaning up: removing {files_to_remove} old file(s)")
+    if not grib_files:
+        return
 
-        for old_file in grib_files[:files_to_remove]:
+    if keep_latest_cycle:
+        # Delete ALL old files to make room for new cycle
+        print(f"\nCleaning all old data ({len(grib_files)} files) to make room for new cycle...")
+        for old_file in grib_files:
             print(f"  Removing: {old_file.name}")
             old_file.unlink()
             # Also remove associated .idx file
             idx_file = old_file.with_suffix('.grib2.idx')
             if idx_file.exists():
                 idx_file.unlink()
+
+        # Also remove old metadata
+        metadata_file = DATA_DIR / 'metadata.json'
+        if metadata_file.exists():
+            metadata_file.unlink()
+            print(f"  Removed: metadata.json")
+    else:
+        print(f"\nExisting files: {len(grib_files)}")
 
 
 def save_metadata(cycle_date: str, cycle_hour: str, downloaded_files: list[str]):
@@ -289,11 +300,13 @@ def main():
                         help=f'Maximum number of GRIB files to keep (default: {MAX_FILES})')
     parser.add_argument('--date', type=str, help='Specific date to download (YYYYMMDD)')
     parser.add_argument('--hour', type=str, help='Specific cycle hour (HH)')
-    parser.add_argument('--num-forecasts', type=int, default=18,
-                        help='Number of forecast hours to download (default: 18)')
+    parser.add_argument('--num-forecasts', type=int, default=3,
+                        help='Number of forecast hours to download (default: 3)')
     parser.add_argument('--domain', type=str, default='na',
                         choices=['na', 'conus', 'ak', 'hi', 'pr'],
                         help='Domain to download (default: na for North America)')
+    parser.add_argument('--clean-before-download', action='store_true',
+                        help='Delete all old data before downloading (keeps only latest cycle)')
     args = parser.parse_args()
 
     print("=" * 60)
@@ -301,6 +314,10 @@ def main():
     print("=" * 60)
 
     setup_data_directory()
+
+    # Clean old data BEFORE downloading if requested
+    if args.clean_before_download:
+        clean_old_files(keep_latest_cycle=True)
 
     # Determine which cycle to download
     if args.date and args.hour:
@@ -356,9 +373,6 @@ def main():
         grib_url = f"{S3_BUCKET}/{s3_key}"
         if download_file(grib_url, local_path):
             downloaded_files.append(filename)
-
-    # Clean up old files
-    clean_old_files(args.max_files)
 
     # Save metadata
     if downloaded_files:

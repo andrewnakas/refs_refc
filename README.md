@@ -9,19 +9,22 @@ This repository automatically downloads RRFS composite reflectivity forecast dat
 ### Data Source
 
 - **Source**: NOAA RRFS on AWS S3 (`noaa-rrfs-pds`)
-- **Data Type**: GRIB2 format
+- **Data Type**: GRIB2 format (pressure level, 3km resolution)
 - **Variable**: Composite Reflectivity (REFC)
+- **Domain**: North America (NA)
 - **Update Frequency**: Hourly cycles (when operational)
-- **Forecast Length**: Up to 84 hours
+- **Forecast Hours Downloaded**: 3 (f000, f001, f002)
+- **File Size**: ~4-6 GB per file
 
 ## Features
 
-- ✅ Automatic download of latest RRFS REFC data
-- ✅ Rolling storage (keeps 50 most recent files by default)
+- ✅ Automatic download of latest RRFS REFC data (North American domain)
+- ✅ Latest-only storage (deletes old cycle before downloading new)
 - ✅ Runs every 3 hours via GitHub Actions
 - ✅ Triggers on push to branch
 - ✅ Manual trigger available
-- ✅ Metadata tracking with JSON logs
+- ✅ Git LFS support for large files (4-6 GB each)
+- ✅ Space-efficient: Downloads 3 forecast hours (~12-18 GB total)
 
 ## Repository Structure
 
@@ -62,7 +65,9 @@ python download_rrfs_refc.py --date 20241201 --hour 12
 
 ### Script Options
 
-- `--max-files N`: Keep N most recent GRIB files (default: 50)
+- `--domain DOMAIN`: Geographic domain (na, conus, ak, hi, pr) - default: na
+- `--num-forecasts N`: Number of forecast hours to download (default: 3)
+- `--clean-before-download`: Delete all old data before downloading new cycle
 - `--date YYYYMMDD`: Download specific date
 - `--hour HH`: Download specific cycle hour (00-23)
 
@@ -70,11 +75,13 @@ python download_rrfs_refc.py --date 20241201 --hour 12
 
 ### GRIB2 Files
 
-Files follow the naming pattern: `rrfs.tHHz.natlev.fXXX.grib2`
+Files follow the naming pattern: `rrfs.tHHz.prslev.3km.fXXX.na.grib2`
 
 - `HH`: Initialization hour (00-23 UTC)
-- `XXX`: Forecast hour (000-084)
-- `natlev`: Native level data (includes all fields)
+- `XXX`: Forecast hour (000-002 in this configuration)
+- `prslev`: Pressure level data (includes REFC)
+- `3km`: 3 kilometer resolution
+- `na`: North America domain
 
 ### Metadata
 
@@ -128,14 +135,15 @@ wgrib2 rrfs_data/rrfs.t12z.natlev.f001.grib2 -match "REFC" -csv output.csv
 
 ### Data Availability
 
-⚠️ **Note**: Real-time RRFS output was temporarily suspended starting December 2024 for retrospective testing. The system is expected to return to operational status. Check the [NOAA RRFS AWS Registry](https://registry.opendata.aws/noaa-rrfs/) for current status.
+RRFS data is operational and updated hourly. Check the [NOAA RRFS AWS Registry](https://registry.opendata.aws/noaa-rrfs/) for current status.
 
 ### Storage Considerations
 
-- Each GRIB2 file is typically 20-100 MB
-- Default limit of 50 files = approximately 1-5 GB storage
-- Adjust `--max-files` based on your GitHub storage limits
-- GitHub repositories have a soft limit of 1 GB
+- **File size**: Each NA domain GRIB2 file is ~4-6 GB
+- **Default configuration**: 3 forecast hours = ~12-18 GB total
+- **Storage strategy**: Only the latest cycle is kept (old data deleted before new download)
+- **Git LFS required**: Large files are stored using Git LFS
+- **GitHub Actions space**: Runner has ~14 GB available, fits 3 files comfortably
 
 ### GitHub Actions Limits
 
@@ -159,12 +167,27 @@ Common schedules:
 - Every 6 hours: `'0 */6 * * *'`
 - Daily at midnight UTC: `'0 0 * * *'`
 
-### Adjusting Storage Limit
+### Adjusting Forecast Hours
 
 In the workflow file or when running locally:
 
 ```yaml
-run: python download_rrfs_refc.py --max-files 100
+# Download more forecast hours (ensure you have enough disk space!)
+run: python download_rrfs_refc.py --domain na --num-forecasts 6 --clean-before-download
+```
+
+**Note**: Each NA file is ~5 GB. GitHub Actions runners have ~14 GB free space.
+- 2 forecast hours: ~10 GB (safe)
+- 3 forecast hours: ~15 GB (current default, may be tight)
+- 6 forecast hours: ~30 GB (will fail - not enough space!)
+
+### Using Different Domains
+
+For smaller file sizes, use CONUS domain instead:
+
+```yaml
+# CONUS files are ~800 MB each - much smaller!
+run: python download_rrfs_refc.py --domain conus --num-forecasts 18 --clean-before-download
 ```
 
 ## Resources
