@@ -138,21 +138,26 @@ def ensure_refc_in_idx(grib_url: str) -> bool:
         return False
 
 
-def choose_refc_files(files: list[dict], max_files: int = 10) -> list[dict]:
+def choose_refc_files(files: list[dict], max_files: int = 10, domain_preference: str = "na") -> list[dict]:
     """
-    Choose which files to download, prioritizing smaller domains and earlier forecast hours.
+    Choose which files to download, prioritizing specified domain and earlier forecast hours.
 
     Args:
         files: List of file dicts
         max_files: Maximum number of files to select
+        domain_preference: Preferred domain (na, conus, ak, hi, pr)
 
     Returns:
         Filtered list of file dicts
     """
-    # Domain priority: smaller domains first (faster downloads)
-    domain_order = ["hi", "pr", "ak", "conus", "na"]
+    # Filter for preferred domain if specified
+    if domain_preference:
+        domain_files = [f for f in files if f".{domain_preference}.grib2" in f['key']]
+        if domain_files:
+            files = domain_files
+            print(f"Filtering for {domain_preference.upper()} domain: {len(files)} files")
 
-    # Sort by forecast hour (f000, f001, etc.) and domain preference
+    # Sort by forecast hour (f000, f001, etc.)
     def sort_key(f):
         key = f['key']
         # Extract forecast hour
@@ -164,14 +169,10 @@ def choose_refc_files(files: list[dict], max_files: int = 10) -> list[dict]:
             except (IndexError, ValueError):
                 pass
 
-        # Domain priority
-        domain_priority = 99
-        for i, domain in enumerate(domain_order):
-            if f".{domain}.grib2" in key:
-                domain_priority = i
-                break
+        # Skip subhourly files (subh) for main forecast
+        is_subh = ".subh." in key
 
-        return (fhour, domain_priority, key)
+        return (is_subh, fhour, key)
 
     sorted_files = sorted(files, key=sort_key)
     return sorted_files[:max_files]
@@ -288,8 +289,11 @@ def main():
                         help=f'Maximum number of GRIB files to keep (default: {MAX_FILES})')
     parser.add_argument('--date', type=str, help='Specific date to download (YYYYMMDD)')
     parser.add_argument('--hour', type=str, help='Specific cycle hour (HH)')
-    parser.add_argument('--num-forecasts', type=int, default=10,
-                        help='Number of forecast hours to download (default: 10)')
+    parser.add_argument('--num-forecasts', type=int, default=18,
+                        help='Number of forecast hours to download (default: 18)')
+    parser.add_argument('--domain', type=str, default='na',
+                        choices=['na', 'conus', 'ak', 'hi', 'pr'],
+                        help='Domain to download (default: na for North America)')
     args = parser.parse_args()
 
     print("=" * 60)
@@ -321,9 +325,9 @@ def main():
     print(f"Found {len(available_files)} total GRIB2 files")
 
     # Filter for files with REFC data and choose which to download
-    print("\nFiltering for files containing REFC data...")
+    print(f"\nFiltering for {args.domain.upper()} domain files containing REFC data...")
     files_to_download = []
-    for file_info in choose_refc_files(available_files, args.num_forecasts * 3):
+    for file_info in choose_refc_files(available_files, args.num_forecasts * 3, args.domain):
         grib_url = f"{S3_BUCKET}/{file_info['key']}"
         if ensure_refc_in_idx(grib_url):
             files_to_download.append(file_info)

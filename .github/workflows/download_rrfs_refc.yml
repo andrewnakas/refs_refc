@@ -22,6 +22,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: claude/github-actions-rrfs-download-01MZQaSh7Vdc2J8VtgMZqT2V
+          lfs: true
+
+      - name: Set up Git LFS
+        run: |
+          git lfs install
+          git lfs track "*.grib2"
+          git lfs track "*.grib2.idx"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,9 +43,9 @@ jobs:
       - name: Create data directory
         run: mkdir -p rrfs_data
 
-      - name: Download RRFS REFC data
+      - name: Download RRFS REFC data (18 hours, North America)
         run: |
-          python download_rrfs_refc.py --max-files 50
+          python download_rrfs_refc.py --domain na --num-forecasts 18 --max-files 50
         continue-on-error: true
 
       - name: List downloaded files
@@ -69,13 +76,14 @@ jobs:
       - name: Commit and push data
         if: steps.check_data.outputs.has_data == 'true'
         run: |
-          git add rrfs_data/
+          git add .gitattributes rrfs_data/
 
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
             git commit -m "Update RRFS REFC data - $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git lfs push --all origin claude/github-actions-rrfs-download-01MZQaSh7Vdc2J8VtgMZqT2V
             git push origin claude/github-actions-rrfs-download-01MZQaSh7Vdc2J8VtgMZqT2V
           fi
 
@@ -116,4 +124,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Data Directory:** \`rrfs_data/\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Rolling Storage:** Keeps up to 50 most recent GRIB files" >> $GITHUB_STEP_SUMMARY
+          echo "**Configuration:**" >> $GITHUB_STEP_SUMMARY
+          echo "- Domain: North America (NA)" >> $GITHUB_STEP_SUMMARY
+          echo "- Forecast hours: 18 (f000-f017)" >> $GITHUB_STEP_SUMMARY
+          echo "- Rolling storage: Up to 50 most recent GRIB files" >> $GITHUB_STEP_SUMMARY
+          echo "- Storage: Git LFS for large files" >> $GITHUB_STEP_SUMMARY

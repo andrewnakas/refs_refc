@@ -1,6 +1,3 @@
-# RRFS Downloaded Data
-rrfs_data/
-
 # Python
 __pycache__/
 *.py[cod]
