@@ -13,18 +13,20 @@ This repository automatically downloads RRFS composite reflectivity forecast dat
 - **Variable**: Composite Reflectivity (REFC)
 - **Domain**: North America (NA)
 - **Update Frequency**: Hourly cycles (when operational)
-- **Forecast Hours Downloaded**: 3 (f000, f001, f002)
-- **File Size**: ~4-6 GB per file
+- **Forecast Hours Downloaded**: 18 (f000-f017)
+- **File Size**: ~7-8 MB per file (REFC field only via byte-range requests)
+- **Download Optimization**: 99.85% size reduction by downloading only REFC field
 
 ## Features
 
 - ✅ Automatic download of latest RRFS REFC data (North American domain)
+- ✅ **Ultra-efficient**: Downloads only REFC field using HTTP byte-range requests (99% size reduction)
+- ✅ 18 forecast hours in just ~144 MB (vs ~90 GB for full files)
 - ✅ Latest-only storage (deletes old cycle before downloading new)
 - ✅ Runs every 3 hours via GitHub Actions
 - ✅ Triggers on push to branch
 - ✅ Manual trigger available
-- ✅ Git LFS support for large files (4-6 GB each)
-- ✅ Space-efficient: Downloads 3 forecast hours (~12-18 GB total)
+- ✅ Git LFS support for efficient storage
 
 ## Repository Structure
 
@@ -55,12 +57,14 @@ The workflow runs automatically:
 # Install dependencies
 pip install requests
 
-# Run the download script
-python download_rrfs_refc.py
+# Run the optimized REFC-only download script (RECOMMENDED)
+python download_rrfs_refc_optimized.py --domain na --num-forecasts 18
 
-# With custom options
-python download_rrfs_refc.py --max-files 100
-python download_rrfs_refc.py --date 20241201 --hour 12
+# Download specific cycle
+python download_rrfs_refc_optimized.py --date 20241201 --hour 12 --num-forecasts 18
+
+# Download different domain
+python download_rrfs_refc_optimized.py --domain conus --num-forecasts 24
 ```
 
 ### Script Options
@@ -139,11 +143,15 @@ RRFS data is operational and updated hourly. Check the [NOAA RRFS AWS Registry](
 
 ### Storage Considerations
 
-- **File size**: Each NA domain GRIB2 file is ~4-6 GB
-- **Default configuration**: 3 forecast hours = ~12-18 GB total
+#### Optimized REFC-Only Download (RECOMMENDED)
+- **File size**: ~7-8 MB per forecast hour (REFC field extracted via byte-range request)
+- **Default configuration**: 18 forecast hours = ~144 MB total
+- **Size reduction**: 99.85% smaller than downloading full GRIB files
 - **Storage strategy**: Only the latest cycle is kept (old data deleted before new download)
-- **Git LFS required**: Large files are stored using Git LFS
-- **GitHub Actions space**: Runner has ~14 GB available, fits 3 files comfortably
+- **GitHub Actions space**: Plenty of room - could download 100+ forecast hours if needed!
+
+#### Why So Small?
+The full GRIB files contain 935 meteorological fields (temperature, pressure, wind, etc. at multiple levels). REFC is just ONE 2D field. By using HTTP byte-range requests, we download only the ~7 MB REFC portion instead of the entire 5 GB file.
 
 ### GitHub Actions Limits
 
