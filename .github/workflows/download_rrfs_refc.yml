@@ -13,6 +13,9 @@ on:
   # Allow manual triggering
   workflow_dispatch:
 
+permissions:
+  contents: write  # Allow writing to repository (commits and pushes)
+
 jobs:
   download-rrfs-data:
     runs-on: ubuntu-latest
