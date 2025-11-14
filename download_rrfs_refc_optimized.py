@@ -203,13 +203,14 @@ def download_refc_only(grib_url: str, idx_url: str, out_path: Path) -> bool:
         return False
 
 
-def choose_forecast_files(files: list[dict], num_forecasts: int) -> list[dict]:
+def choose_forecast_files(files: list[dict], num_forecasts: int = None) -> list[dict]:
     """
     Choose forecast hours to download, sorted by forecast hour.
+    If num_forecasts is None, downloads ALL available forecast hours.
 
     Args:
         files: List of file dicts
-        num_forecasts: Number of forecast hours to select
+        num_forecasts: Number of forecast hours to select (None = all)
 
     Returns:
         Filtered list of file dicts
@@ -231,7 +232,35 @@ def choose_forecast_files(files: list[dict], num_forecasts: int) -> list[dict]:
         return (is_subh, fhour, key)
 
     sorted_files = sorted(files, key=sort_key)
+
+    # If num_forecasts is None, return all files
+    if num_forecasts is None:
+        return sorted_files
+
     return sorted_files[:num_forecasts]
+
+
+def detect_forecast_length(files: list[dict]) -> tuple[int, str]:
+    """
+    Detect the maximum forecast hour available and classify as short/long range.
+
+    Returns:
+        Tuple of (max_forecast_hour, range_type) where range_type is 'short' or 'long'
+    """
+    max_hour = 0
+    for f in files:
+        key = f['key']
+        if ".f" in key and ".subh." not in key:
+            try:
+                fhour_str = key.split(".f")[1].split(".")[0]
+                fhour = int(fhour_str)
+                max_hour = max(max_hour, fhour)
+            except (IndexError, ValueError):
+                pass
+
+    # Classify: short-range (≤24 hrs), long-range (>24 hrs)
+    range_type = 'long' if max_hour > 24 else 'short'
+    return max_hour, range_type
 
 
 def clean_old_files():
@@ -243,7 +272,6 @@ def clean_old_files():
 
     print(f"\nCleaning all old data ({len(grib_files)} files)...")
     for old_file in grib_files:
-        print(f"  Removing: {old_file.name}")
         old_file.unlink()
         # Also remove associated .idx file
         idx_file = old_file.with_suffix('.grib2.idx')
@@ -256,12 +284,15 @@ def clean_old_files():
         metadata_file.unlink()
 
 
-def save_metadata(cycle_date: str, cycle_hour: str, downloaded_files: list[str]):
+def save_metadata(cycle_date: str, cycle_hour: str, downloaded_files: list[str],
+                  max_forecast_hour: int, range_type: str):
     """Save metadata about the download."""
     metadata = {
         'last_update': datetime.now(timezone.utc).isoformat(),
         'cycle_date': cycle_date,
         'cycle_hour': cycle_hour,
+        'forecast_range_type': range_type,
+        'max_forecast_hour': max_forecast_hour,
         'files_downloaded': len(downloaded_files),
         'file_list': downloaded_files,
         'note': 'Files contain REFC field only (extracted via byte-range request)'
@@ -279,12 +310,18 @@ def main():
     parser = argparse.ArgumentParser(description='Download RRFS REFC (composite reflectivity) data only')
     parser.add_argument('--date', type=str, help='Specific date to download (YYYYMMDD)')
     parser.add_argument('--hour', type=str, help='Specific cycle hour (HH)')
-    parser.add_argument('--num-forecasts', type=int, default=18,
-                        help='Number of forecast hours to download (default: 18)')
+    parser.add_argument('--num-forecasts', type=int, default=None,
+                        help='Number of forecast hours to download (default: None = download all available)')
     parser.add_argument('--domain', type=str, default='na',
                         choices=['na', 'conus', 'ak', 'hi', 'pr'],
                         help='Domain to download (default: na for North America)')
+    parser.add_argument('--download-all-hours', action='store_true',
+                        help='Download ALL available forecast hours (overrides --num-forecasts)')
     args = parser.parse_args()
+
+    # If --download-all-hours is set, override num_forecasts to None
+    if args.download_all_hours:
+        args.num_forecasts = None
 
     print("=" * 60)
     print("RRFS REFC-Only Downloader (Byte-Range Optimized)")
@@ -313,11 +350,18 @@ def main():
         print(f"\nNo GRIB2 files found for {args.domain.upper()} domain.")
         return 1
 
+    # Detect forecast length
+    max_forecast_hour, range_type = detect_forecast_length(available_files)
     print(f"Found {len(available_files)} {args.domain.upper()} domain files")
+    print(f"Forecast range: {range_type.upper()}-RANGE (extends to f{max_forecast_hour:03d})")
 
     # Choose which files to download
     files_to_download = choose_forecast_files(available_files, args.num_forecasts)
-    print(f"Downloading REFC from {len(files_to_download)} forecast hours")
+
+    if args.num_forecasts is None:
+        print(f"Downloading ALL forecast hours: f000-f{max_forecast_hour:03d}")
+    else:
+        print(f"Downloading {len(files_to_download)} forecast hours (f000-f{args.num_forecasts-1:03d})")
 
     # Download REFC fields only
     downloaded_files = []
@@ -340,10 +384,11 @@ def main():
 
     # Save metadata
     if downloaded_files:
-        save_metadata(cycle_date, cycle_hour, downloaded_files)
+        save_metadata(cycle_date, cycle_hour, downloaded_files, max_forecast_hour, range_type)
 
     print("\n" + "=" * 60)
     print(f"Download complete: {len(downloaded_files)} files")
+    print(f"Cycle type: {range_type.upper()}-RANGE (f000-f{max_forecast_hour:03d})")
     print(f"Data directory: {DATA_DIR.absolute()}")
     print("=" * 60)
 

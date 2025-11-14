@@ -49,9 +49,9 @@ jobs:
       - name: Create data directory
         run: mkdir -p rrfs_data
 
-      - name: Download RRFS REFC data (18 hours, North America, REFC-only)
+      - name: Download RRFS REFC data (All hours, North America, REFC-only)
         run: |
-          python download_rrfs_refc_optimized.py --domain na --num-forecasts 18
+          python download_rrfs_refc_optimized.py --domain na --download-all-hours
         continue-on-error: true
 
       - name: List downloaded files
@@ -139,8 +139,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Configuration:**" >> $GITHUB_STEP_SUMMARY
           echo "- Domain: North America (NA)" >> $GITHUB_STEP_SUMMARY
-          echo "- Forecast hours: 18 (f000-f017)" >> $GITHUB_STEP_SUMMARY
+          echo "- Forecast hours: ALL available (auto-detected: short-range ~18hrs or long-range ~60-84hrs)" >> $GITHUB_STEP_SUMMARY
           echo "- Download method: REFC field only via byte-range requests" >> $GITHUB_STEP_SUMMARY
           echo "- File size: ~7-8 MB per forecast hour (99% smaller than full files)" >> $GITHUB_STEP_SUMMARY
-          echo "- Total size: ~144 MB for 18 forecast hours" >> $GITHUB_STEP_SUMMARY
+          echo "- Total size: ~144 MB for 18 hrs, ~480 MB for 60 hrs, ~672 MB for 84 hrs" >> $GITHUB_STEP_SUMMARY
           echo "- Storage: Git LFS for efficient storage" >> $GITHUB_STEP_SUMMARY
