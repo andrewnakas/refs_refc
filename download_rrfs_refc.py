@@ -8,22 +8,20 @@ reflectivity information and manages storage on a rolling basis.
 
 import os
 import sys
+import time
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import xml.etree.ElementTree as ET
 import argparse
 import json
 
 # Configuration
-S3_BUCKET = "noaa-rrfs-pds"
-S3_BASE_URL = f"https://{S3_BUCKET}.s3.amazonaws.com"
+S3_BUCKET = "https://noaa-rrfs-pds.s3.amazonaws.com"
+PREFIX_ROOT = "rrfs_a"
 DATA_DIR = Path("rrfs_data")
 MAX_FILES = 50  # Maximum number of GRIB files to keep (rolling basis)
-
-# RRFS runs every hour, forecasts out to 84 hours
-FORECAST_HOURS = list(range(0, 19))  # Download first 18 hours of forecast
-CYCLES_TO_CHECK = 6  # Check last 6 cycles (6 hours back)
+CYCLES_TO_CHECK = 12  # Check last 12 cycles (12 hours back)
 
 
 def setup_data_directory():
@@ -32,133 +30,212 @@ def setup_data_directory():
     print(f"Data directory: {DATA_DIR.absolute()}")
 
 
-def get_latest_cycle():
+def list_bucket(prefix: str):
+    """Query S3 bucket with given prefix."""
+    params = {"delimiter": "/", "prefix": prefix}
+    r = requests.get(S3_BUCKET + "/", params=params, timeout=20)
+    r.raise_for_status()
+    return ET.fromstring(r.text)
+
+
+def find_latest_cycle(day_ymd: str) -> str | None:
     """
-    Determine the latest available RRFS cycle to download.
-    RRFS runs hourly, but data may have a delay.
-    """
-    current_utc = datetime.utcnow()
-    # Go back a few hours to account for processing delay
-    start_time = current_utc - timedelta(hours=3)
-
-    # Try recent cycles
-    for hours_back in range(CYCLES_TO_CHECK):
-        check_time = start_time - timedelta(hours=hours_back)
-        cycle_date = check_time.strftime("%Y%m%d")
-        cycle_hour = check_time.strftime("%H")
-
-        # Check if this cycle exists in S3
-        prefix = f"rrfs_a/rrfs_a.{cycle_date}/{cycle_hour}/"
-        url = f"{S3_BASE_URL}/?prefix={prefix}&max-keys=1"
-
-        try:
-            response = requests.get(url, timeout=10)
-            if response.status_code == 200:
-                root = ET.fromstring(response.content)
-                # Check if any files exist
-                contents = root.findall(".//{http://s3.amazonaws.com/doc/2006-03-01/}Contents")
-                if contents:
-                    print(f"Found available cycle: {cycle_date}/{cycle_hour}z")
-                    return cycle_date, cycle_hour
-        except Exception as e:
-            print(f"Error checking cycle {cycle_date}/{cycle_hour}z: {e}")
-            continue
-
-    # If no recent data found, return latest expected time anyway
-    fallback_time = current_utc - timedelta(hours=3)
-    cycle_date = fallback_time.strftime("%Y%m%d")
-    cycle_hour = fallback_time.strftime("%H")
-    print(f"No recent data found, using fallback: {cycle_date}/{cycle_hour}z")
-    return cycle_date, cycle_hour
-
-
-def list_available_files(cycle_date, cycle_hour):
-    """
-    List available GRIB2 files for a given cycle.
+    Find the latest available cycle hour for a given date.
 
     Args:
-        cycle_date: Date string (YYYYMMDD)
-        cycle_hour: Hour string (HH)
+        day_ymd: Date string (YYYYMMDD)
 
     Returns:
-        List of file keys (S3 paths)
+        Hour string (HH) or None if no cycles found
     """
-    prefix = f"rrfs_a/rrfs_a.{cycle_date}/{cycle_hour}/"
-    url = f"{S3_BASE_URL}/?prefix={prefix}"
-
-    print(f"Listing files at: {prefix}")
-
     try:
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
+        root = list_bucket(f"{PREFIX_ROOT}/rrfs.{day_ymd}/")
+        hours = []
+        for cp in root.findall("{http://s3.amazonaws.com/doc/2006-03-01/}CommonPrefixes"):
+            pref = cp.find("{http://s3.amazonaws.com/doc/2006-03-01/}Prefix").text
+            parts = pref.strip("/").split("/")
+            if len(parts) >= 3:
+                hh = parts[2]
+                if hh.isdigit() and len(hh) == 2:
+                    hours.append(hh)
+        return max(hours) if hours else None
+    except Exception as e:
+        print(f"Error finding cycles for {day_ymd}: {e}")
+        return None
 
-        root = ET.fromstring(response.content)
+
+def get_latest_available_cycle():
+    """
+    Determine the latest available RRFS cycle to download.
+    Tries recent dates and hours to find active data.
+    """
+    current_utc = datetime.now(timezone.utc)
+
+    # Try the last several hours
+    for hours_back in range(CYCLES_TO_CHECK):
+        check_time = current_utc - timedelta(hours=hours_back + 2)  # Account for processing delay
+        day_ymd = check_time.strftime("%Y%m%d")
+
+        latest_hour = find_latest_cycle(day_ymd)
+        if latest_hour:
+            print(f"Found available cycle: {day_ymd}/{latest_hour}z")
+            return day_ymd, latest_hour
+
+    # No data found
+    print("No recent RRFS cycles found in the last 12 hours")
+    return None, None
+
+
+def list_prslev_keys(day_ymd: str, hh: str) -> list[dict]:
+    """
+    List pressure level GRIB2 files for a given cycle.
+
+    Args:
+        day_ymd: Date string (YYYYMMDD)
+        hh: Hour string (HH)
+
+    Returns:
+        List of dicts with 'key' and 'size' for each file
+    """
+    try:
+        root = list_bucket(f"{PREFIX_ROOT}/rrfs.{day_ymd}/{hh}/")
         files = []
-
-        # Find all grib2 files
-        for content in root.findall(".//{http://s3.amazonaws.com/doc/2006-03-01/}Contents"):
-            key_elem = content.find("{http://s3.amazonaws.com/doc/2006-03-01/}Key")
-            size_elem = content.find("{http://s3.amazonaws.com/doc/2006-03-01/}Size")
+        for ct in root.findall("{http://s3.amazonaws.com/doc/2006-03-01/}Contents"):
+            key_elem = ct.find("{http://s3.amazonaws.com/doc/2006-03-01/}Key")
+            size_elem = ct.find("{http://s3.amazonaws.com/doc/2006-03-01/}Size")
 
             if key_elem is not None and key_elem.text:
                 key = key_elem.text
                 size = int(size_elem.text) if size_elem is not None else 0
 
-                # Filter for grib2 files with native level (contains all fields including REFC)
-                if key.endswith('.grib2') and 'natlev' in key:
+                # Look for pressure level GRIB2 files (contain REFC data)
+                if "/rrfs.t" in key and ".prslev" in key and key.endswith(".grib2"):
                     files.append({'key': key, 'size': size})
 
-        print(f"Found {len(files)} grib2 files")
         return files
-
     except Exception as e:
         print(f"Error listing files: {e}")
         return []
 
 
-def download_file(s3_key, local_path):
+def ensure_refc_in_idx(grib_url: str) -> bool:
+    """
+    Check if a GRIB2 file contains REFC (composite reflectivity) data.
+
+    Args:
+        grib_url: URL to the GRIB2 file
+
+    Returns:
+        True if REFC data is present, False otherwise
+    """
+    idx_url = grib_url + ".idx"
+    try:
+        r = requests.get(idx_url, timeout=20)
+        if r.status_code != 200:
+            return False
+        return "REFC:" in r.text
+    except Exception:
+        return False
+
+
+def choose_refc_files(files: list[dict], max_files: int = 10) -> list[dict]:
+    """
+    Choose which files to download, prioritizing smaller domains and earlier forecast hours.
+
+    Args:
+        files: List of file dicts
+        max_files: Maximum number of files to select
+
+    Returns:
+        Filtered list of file dicts
+    """
+    # Domain priority: smaller domains first (faster downloads)
+    domain_order = ["hi", "pr", "ak", "conus", "na"]
+
+    # Sort by forecast hour (f000, f001, etc.) and domain preference
+    def sort_key(f):
+        key = f['key']
+        # Extract forecast hour
+        fhour = 999
+        if ".f" in key:
+            try:
+                fhour_str = key.split(".f")[1].split(".")[0]
+                fhour = int(fhour_str)
+            except (IndexError, ValueError):
+                pass
+
+        # Domain priority
+        domain_priority = 99
+        for i, domain in enumerate(domain_order):
+            if f".{domain}.grib2" in key:
+                domain_priority = i
+                break
+
+        return (fhour, domain_priority, key)
+
+    sorted_files = sorted(files, key=sort_key)
+    return sorted_files[:max_files]
+
+
+def download_file(url: str, out_path: Path) -> bool:
     """
     Download a file from S3.
 
     Args:
-        s3_key: S3 object key
-        local_path: Local file path to save to
+        url: Full URL to the file
+        out_path: Local path to save to
 
     Returns:
         True if successful, False otherwise
     """
-    url = f"{S3_BASE_URL}/{s3_key}"
-
     try:
-        print(f"Downloading: {s3_key}")
-        response = requests.get(url, stream=True, timeout=300)
-        response.raise_for_status()
+        print(f"Downloading: {out_path.name}")
+        t0 = time.time()
 
-        # Get file size
-        file_size = int(response.headers.get('content-length', 0))
+        with requests.get(url, stream=True, timeout=300) as r:
+            r.raise_for_status()
+            file_size = int(r.headers.get('content-length', 0))
 
-        # Download with progress
-        downloaded = 0
-        with open(local_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if file_size > 0:
-                        percent = (downloaded / file_size) * 100
-                        print(f"  Progress: {percent:.1f}% ({downloaded / 1024 / 1024:.1f} MB)", end='\r')
+            downloaded = 0
+            with open(out_path, 'wb') as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):  # 1 MB chunks
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if file_size > 0:
+                            percent = (downloaded / file_size) * 100
+                            print(f"  Progress: {percent:.1f}% ({downloaded / 1024 / 1024:.1f} MB)", end='\r')
 
-        print(f"\n  Downloaded: {local_path.name} ({downloaded / 1024 / 1024:.1f} MB)")
+        dt = time.time() - t0
+        size_mb = os.path.getsize(out_path) / (1024 * 1024)
+        print(f"\n  Downloaded: {size_mb:.1f} MiB in {dt:.1f}s")
+
+        # Also download and save the .idx file
+        idx_url = url + ".idx"
+        idx_path = out_path.with_suffix('.grib2.idx')
+        try:
+            r = requests.get(idx_url, timeout=20)
+            r.raise_for_status()
+            with open(idx_path, 'wb') as f:
+                f.write(r.content)
+
+            # Show REFC lines from index
+            refc_lines = [ln for ln in r.text.splitlines() if "REFC:" in ln]
+            if refc_lines:
+                print(f"  REFC fields found: {len(refc_lines)}")
+        except Exception as e:
+            print(f"  Warning: Could not download .idx file: {e}")
+
         return True
 
     except Exception as e:
-        print(f"  Error downloading {s3_key}: {e}")
-        if local_path.exists():
-            local_path.unlink()
+        print(f"\n  Error downloading: {e}")
+        if out_path.exists():
+            out_path.unlink()
         return False
 
 
-def clean_old_files(max_files=MAX_FILES):
+def clean_old_files(max_files: int = MAX_FILES):
     """
     Remove oldest files to maintain rolling storage limit.
 
@@ -174,9 +251,13 @@ def clean_old_files(max_files=MAX_FILES):
         for old_file in grib_files[:files_to_remove]:
             print(f"  Removing: {old_file.name}")
             old_file.unlink()
+            # Also remove associated .idx file
+            idx_file = old_file.with_suffix('.grib2.idx')
+            if idx_file.exists():
+                idx_file.unlink()
 
 
-def save_metadata(cycle_date, cycle_hour, downloaded_files):
+def save_metadata(cycle_date: str, cycle_hour: str, downloaded_files: list[str]):
     """
     Save metadata about the download.
 
@@ -186,7 +267,7 @@ def save_metadata(cycle_date, cycle_hour, downloaded_files):
         downloaded_files: List of downloaded file names
     """
     metadata = {
-        'last_update': datetime.utcnow().isoformat(),
+        'last_update': datetime.now(timezone.utc).isoformat(),
         'cycle_date': cycle_date,
         'cycle_hour': cycle_hour,
         'files_downloaded': len(downloaded_files),
@@ -207,6 +288,8 @@ def main():
                         help=f'Maximum number of GRIB files to keep (default: {MAX_FILES})')
     parser.add_argument('--date', type=str, help='Specific date to download (YYYYMMDD)')
     parser.add_argument('--hour', type=str, help='Specific cycle hour (HH)')
+    parser.add_argument('--num-forecasts', type=int, default=10,
+                        help='Number of forecast hours to download (default: 10)')
     args = parser.parse_args()
 
     print("=" * 60)
@@ -220,38 +303,62 @@ def main():
         cycle_date, cycle_hour = args.date, args.hour
         print(f"Using specified cycle: {cycle_date}/{cycle_hour}z")
     else:
-        cycle_date, cycle_hour = get_latest_cycle()
+        cycle_date, cycle_hour = get_latest_available_cycle()
+        if cycle_date is None:
+            print("\nNo files available for download.")
+            print("The RRFS system may be temporarily offline or experiencing delays.")
+            print("Check https://registry.opendata.aws/noaa-rrfs/ for status updates.")
+            return 1
 
     # List available files
-    available_files = list_available_files(cycle_date, cycle_hour)
+    print(f"\nListing files at: {PREFIX_ROOT}/rrfs.{cycle_date}/{cycle_hour}/")
+    available_files = list_prslev_keys(cycle_date, cycle_hour)
 
     if not available_files:
-        print("\nNo files available for download. The RRFS system may be offline.")
-        print("Note: Real-time RRFS data was temporarily suspended starting Dec 2024.")
-        print("Check https://registry.opendata.aws/noaa-rrfs/ for status updates.")
+        print("\nNo GRIB2 files found for this cycle.")
         return 1
+
+    print(f"Found {len(available_files)} total GRIB2 files")
+
+    # Filter for files with REFC data and choose which to download
+    print("\nFiltering for files containing REFC data...")
+    files_to_download = []
+    for file_info in choose_refc_files(available_files, args.num_forecasts * 3):
+        grib_url = f"{S3_BUCKET}/{file_info['key']}"
+        if ensure_refc_in_idx(grib_url):
+            files_to_download.append(file_info)
+            if len(files_to_download) >= args.num_forecasts:
+                break
+
+    if not files_to_download:
+        print("No files with REFC data found!")
+        return 1
+
+    print(f"Selected {len(files_to_download)} files with REFC data to download")
 
     # Download files
     downloaded_files = []
-    for file_info in available_files[:10]:  # Limit to first 10 forecast hours
+    for file_info in files_to_download:
         s3_key = file_info['key']
         filename = Path(s3_key).name
         local_path = DATA_DIR / filename
 
         # Skip if already exists
         if local_path.exists():
-            print(f"Skipping (already exists): {filename}")
+            print(f"\nSkipping (already exists): {filename}")
             downloaded_files.append(filename)
             continue
 
-        if download_file(s3_key, local_path):
+        grib_url = f"{S3_BUCKET}/{s3_key}"
+        if download_file(grib_url, local_path):
             downloaded_files.append(filename)
 
     # Clean up old files
     clean_old_files(args.max_files)
 
     # Save metadata
-    save_metadata(cycle_date, cycle_hour, downloaded_files)
+    if downloaded_files:
+        save_metadata(cycle_date, cycle_hour, downloaded_files)
 
     print("\n" + "=" * 60)
     print(f"Download complete: {len(downloaded_files)} files")
