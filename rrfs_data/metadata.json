@@ -1,13 +1,13 @@
 {
-  "last_update": "2025-11-15T03:39:29.184913+00:00",
+  "last_update": "2025-11-15T04:22:29.024291+00:00",
   "cycle_date": "20251115",
-  "cycle_hour": "02",
+  "cycle_hour": "03",
   "forecast_range_type": "short",
   "max_forecast_hour": 0,
   "files_downloaded": 2,
   "file_list": [
-    "rrfs.t02z.prslev.3km.f000.na.grib2",
-    "rrfs.t02z.prslev.3km.f000.na.grib2.idx"
+    "rrfs.t03z.prslev.3km.f000.na.grib2",
+    "rrfs.t03z.prslev.3km.f000.na.grib2.idx"
   ],
   "note": "Files contain REFC field only (extracted via byte-range request)"
 }
