@@ -6,9 +6,9 @@ on:
     branches:
       - claude/github-actions-rrfs-download-01MZQaSh7Vdc2J8VtgMZqT2V
 
-  # Run on a schedule - every 3 hours
+  # Run on a schedule - every hour to catch new data quickly
   schedule:
-    - cron: '0 */3 * * *'  # Every 3 hours at minute 0
+    - cron: '5 * * * *'  # Every hour at 5 minutes past (e.g., 00:05, 01:05, 02:05...)
 
   # Allow manual triggering
   workflow_dispatch:
