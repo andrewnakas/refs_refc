@@ -263,25 +263,36 @@ def detect_forecast_length(files: list[dict]) -> tuple[int, str]:
     return max_hour, range_type
 
 
-def clean_old_files():
-    """Remove all existing GRIB files to make room for new cycle."""
+def clean_old_files(current_cycle_date: str, current_cycle_hour: str):
+    """
+    Remove old GRIB files from previous cycles, keeping only the current cycle.
+
+    Args:
+        current_cycle_date: Date of current cycle (YYYYMMDD)
+        current_cycle_hour: Hour of current cycle (HH)
+    """
     grib_files = list(DATA_DIR.glob("*.grib2"))
 
     if not grib_files:
         return
 
-    print(f"\nCleaning all old data ({len(grib_files)} files)...")
-    for old_file in grib_files:
-        old_file.unlink()
-        # Also remove associated .idx file
-        idx_file = old_file.with_suffix('.grib2.idx')
-        if idx_file.exists():
-            idx_file.unlink()
+    current_cycle_prefix = f"rrfs.t{current_cycle_hour}z"
+    files_to_remove = []
 
-    # Also remove old metadata
-    metadata_file = DATA_DIR / 'metadata.json'
-    if metadata_file.exists():
-        metadata_file.unlink()
+    for grib_file in grib_files:
+        # Keep files from current cycle, remove everything else
+        if not grib_file.name.startswith(current_cycle_prefix):
+            files_to_remove.append(grib_file)
+
+    if files_to_remove:
+        print(f"\nCleaning old data from previous cycles ({len(files_to_remove)} files)...")
+        for old_file in files_to_remove:
+            print(f"  Removing: {old_file.name}")
+            old_file.unlink()
+            # Also remove associated .idx file
+            idx_file = old_file.with_suffix('.grib2.idx')
+            if idx_file.exists():
+                idx_file.unlink()
 
 
 def save_metadata(cycle_date: str, cycle_hour: str, downloaded_files: list[str],
@@ -328,9 +339,6 @@ def main():
     print("=" * 60)
 
     setup_data_directory()
-
-    # Clean old data before downloading
-    clean_old_files()
 
     # Determine which cycle to download
     if args.date and args.hour:
@@ -381,6 +389,10 @@ def main():
 
         if download_refc_only(grib_url, idx_url, local_path):
             downloaded_files.append(filename)
+
+    # Clean old data AFTER successful download
+    if downloaded_files:
+        clean_old_files(cycle_date, cycle_hour)
 
     # Save metadata
     if downloaded_files:

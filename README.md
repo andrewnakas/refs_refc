@@ -1,218 +1,285 @@
-# RRFS REFC Data Downloader
+# RRFS REFC Data Auto-Downloader
 
-Automated download of NOAA RRFS (Rapid Refresh Forecast System) composite reflectivity (REFC) GRIB2 data using GitHub Actions.
+**Automated hourly downloads of NOAA RRFS Composite Reflectivity (radar) data for North America**
 
-## Overview
+## What This Does
 
-This repository automatically downloads RRFS composite reflectivity forecast data from NOAA's AWS S3 bucket and stores it on a rolling basis.
+This repository automatically downloads the latest weather radar composite reflectivity forecasts from NOAA's Rapid Refresh Forecast System (RRFS) and stores them in Git using an ultra-efficient byte-range extraction method.
 
-### Data Source
+### Key Features
 
-- **Source**: NOAA RRFS on AWS S3 (`noaa-rrfs-pds`)
-- **Data Type**: GRIB2 format (pressure level, 3km resolution)
-- **Variable**: Composite Reflectivity (REFC)
-- **Domain**: North America (NA)
-- **Update Frequency**: Hourly cycles (when operational)
-- **Forecast Hours Downloaded**: 18 (f000-f017)
-- **File Size**: ~7-8 MB per file (REFC field only via byte-range requests)
-- **Download Optimization**: 99.85% size reduction by downloading only REFC field
+✅ **Runs automatically every hour** via GitHub Actions
+✅ **Downloads ALL available forecast hours** from latest cycle (18-84 hours depending on cycle type)
+✅ **99.85% size reduction** - extracts only the REFC field instead of full GRIB files
+✅ **Smart cleanup** - removes old cycles after downloading new data
+✅ **Git LFS storage** - handles large files efficiently
+✅ **North American coverage** - full continental-scale radar composite
 
-## Features
+## How It Works
 
-- ✅ Automatic download of latest RRFS REFC data (North American domain)
-- ✅ **Ultra-efficient**: Downloads only REFC field using HTTP byte-range requests (99% size reduction)
-- ✅ 18 forecast hours in just ~144 MB (vs ~90 GB for full files)
-- ✅ Latest-only storage (deletes old cycle before downloading new)
-- ✅ Runs every 3 hours via GitHub Actions
-- ✅ Triggers on push to branch
-- ✅ Manual trigger available
-- ✅ Git LFS support for efficient storage
+### 1. Data Source
+- **NOAA RRFS** (Rapid Refresh Forecast System)
+- **Updates**: Hourly (00z, 01z, 02z, ... 23z UTC)
+- **Variable**: REFC (Composite Reflectivity) - simulated radar imagery
+- **Domain**: North America (3km resolution)
+- **Forecast Length**: Varies by cycle
+  - Short-range cycles: ~18 hours
+  - Long-range cycles: 60-84 hours
 
-## Repository Structure
+### 2. Download Process
+
+**Every hour at :05 past (00:05, 01:05, 02:05...):**
+
+1. **Find Latest Cycle** - Checks NOAA's S3 bucket for most recent available cycle
+2. **Detect Forecast Length** - Automatically determines if cycle is short or long-range
+3. **Download REFC Data** - Uses HTTP byte-range requests to extract ONLY the reflectivity field
+4. **Clean Old Data** - Removes previous cycle's files AFTER new download succeeds
+5. **Commit & Push** - Saves new data to repository via Git LFS
+
+### 3. Efficiency Innovation
+
+**The Problem**: Full GRIB files contain 935+ meteorological fields (temperature, wind, pressure, etc.)
+**Our Solution**: Extract only the REFC field using HTTP Range headers
+
+**Size Comparison**:
+```
+Traditional Method:
+  18 forecast hours × 5 GB per file = 90 GB ❌
+
+Our Method (Byte-Range Extraction):
+  18 forecast hours × 8 MB per file = 144 MB ✅
+
+99.85% size reduction!
+```
+
+### 4. File Structure
 
 ```
-.
-├── .github/
-│   └── workflows/
-│       └── download_rrfs_refc.yml    # GitHub Actions workflow
-├── download_rrfs_refc.py              # Python download script
-├── rrfs_data/                         # Downloaded GRIB files (auto-created)
-│   ├── *.grib2                        # RRFS forecast files
-│   └── metadata.json                  # Download metadata
-└── README.md                          # This file
+rrfs_data/
+├── rrfs.t{HH}z.prslev.3km.f000.na.grib2     # Analysis (current conditions)
+├── rrfs.t{HH}z.prslev.3km.f001.na.grib2     # +1 hour forecast
+├── rrfs.t{HH}z.prslev.3km.f002.na.grib2     # +2 hour forecast
+├── ...                                       # ... through all available hours
+├── rrfs.t{HH}z.prslev.3km.f0XX.na.grib2     # Final forecast hour
+├── *.grib2.idx                               # Index files for verification
+└── metadata.json                             # Download metadata
 ```
 
-## Usage
+**Filename Format**: `rrfs.t{HH}z.prslev.3km.f{FFF}.na.grib2`
+- `HH`: Cycle initialization hour (00-23 UTC)
+- `FFF`: Forecast hour (000-018 for short-range, 000-084 for long-range)
+- `prslev`: Pressure level file (contains REFC)
+- `3km`: 3 kilometer grid resolution
+- `na`: North America domain
 
-### Automatic Downloads (GitHub Actions)
+### 5. Metadata Tracking
 
-The workflow runs automatically:
-- **On schedule**: Every 3 hours
-- **On push**: When code is pushed to the branch
-- **Manual**: Via GitHub Actions "Run workflow" button
+Each download creates `metadata.json`:
+```json
+{
+  "last_update": "2025-11-14T23:05:00Z",
+  "cycle_date": "20251114",
+  "cycle_hour": "23",
+  "forecast_range_type": "short",
+  "max_forecast_hour": 18,
+  "files_downloaded": 18,
+  "file_list": ["rrfs.t23z.prslev.3km.f000.na.grib2", ...],
+  "note": "Files contain REFC field only (extracted via byte-range request)"
+}
+```
 
-### Manual Local Download
+## Repository Contents
+
+### Core Files
+- **`download_rrfs_refc_optimized.py`** - Optimized REFC-only downloader with byte-range extraction
+- **`.github/workflows/download_rrfs_refc.yml`** - GitHub Actions workflow (runs hourly)
+- **`.gitattributes`** - Git LFS configuration for large files
+- **`rrfs_data/`** - Downloaded REFC GRIB2 files (auto-updated)
+
+### Legacy Files
+- **`download_rrfs_refc.py`** - Original full-file downloader (kept for reference)
+
+## Storage Strategy
+
+**Rolling Latest-Cycle Storage:**
+- Repository contains ONLY the most recent cycle at any time
+- When new cycle is downloaded, old cycle is automatically cleaned up
+- Total storage: ~144 MB (short-range) to ~672 MB (long-range)
+- Git LFS handles large binary files efficiently
+
+**Why Clean After Download?**
+- Ensures you always have SOME data (if download fails, old data remains)
+- Only removes old data after new data successfully downloads
+- More reliable than cleaning before download
+
+## Working with the Data
+
+### Reading REFC in Python
+
+**Using pygrib:**
+```python
+import pygrib
+
+# Open GRIB file
+grib = pygrib.open('rrfs_data/rrfs.t23z.prslev.3km.f001.na.grib2')
+
+# Extract REFC field
+refc = grib.select(name='Composite reflectivity')[0]
+data = refc.values  # Reflectivity values in dBZ
+lats, lons = refc.latlons()  # Latitude/longitude grid
+
+print(f"REFC shape: {data.shape}")
+print(f"REFC range: {data.min():.1f} to {data.max():.1f} dBZ")
+```
+
+**Using xarray + cfgrib:**
+```python
+import xarray as xr
+
+ds = xr.open_dataset(
+    'rrfs_data/rrfs.t23z.prslev.3km.f001.na.grib2',
+    engine='cfgrib',
+    backend_kwargs={'filter_by_keys': {'typeOfLevel': 'atmosphere'}}
+)
+
+refc = ds['refc']  # Composite reflectivity DataArray
+print(refc)
+```
+
+**Using wgrib2 (command line):**
+```bash
+# List contents
+wgrib2 rrfs_data/rrfs.t23z.prslev.3km.f001.na.grib2
+
+# Extract REFC to CSV
+wgrib2 rrfs_data/rrfs.t23z.prslev.3km.f001.na.grib2 -match "REFC" -csv refc.csv
+
+# Convert to NetCDF
+wgrib2 rrfs_data/rrfs.t23z.prslev.3km.f001.na.grib2 -match "REFC" -netcdf refc.nc
+```
+
+## Manual Usage
+
+### Running Locally
 
 ```bash
 # Install dependencies
 pip install requests
 
-# Run the optimized REFC-only download script (RECOMMENDED)
-python download_rrfs_refc_optimized.py --domain na --num-forecasts 18
+# Download latest cycle (all forecast hours)
+python download_rrfs_refc_optimized.py --domain na --download-all-hours
 
 # Download specific cycle
-python download_rrfs_refc_optimized.py --date 20241201 --hour 12 --num-forecasts 18
+python download_rrfs_refc_optimized.py --date 20251114 --hour 23 --download-all-hours
 
-# Download different domain
-python download_rrfs_refc_optimized.py --domain conus --num-forecasts 24
+# Download limited forecast hours
+python download_rrfs_refc_optimized.py --domain na --num-forecasts 6
+
+# Download different domain (smaller files)
+python download_rrfs_refc_optimized.py --domain conus --download-all-hours
 ```
 
 ### Script Options
 
-- `--domain DOMAIN`: Geographic domain (na, conus, ak, hi, pr) - default: na
-- `--num-forecasts N`: Number of forecast hours to download (default: 3)
-- `--clean-before-download`: Delete all old data before downloading new cycle
-- `--date YYYYMMDD`: Download specific date
-- `--hour HH`: Download specific cycle hour (00-23)
+- `--domain {na,conus,ak,hi,pr}` - Geographic domain (default: na)
+- `--download-all-hours` - Download ALL available forecast hours (recommended)
+- `--num-forecasts N` - Limit to N forecast hours
+- `--date YYYYMMDD` - Download specific date
+- `--hour HH` - Download specific cycle hour (00-23)
 
-## Data Files
+## GitHub Actions Workflow
 
-### GRIB2 Files
+### Schedule
+- **Frequency**: Every hour at :05 past the hour
+- **Trigger**: `5 * * * *` (cron schedule)
+- **Also runs**: On push to branch, manual trigger
 
-Files follow the naming pattern: `rrfs.tHHz.prslev.3km.fXXX.na.grib2`
+### Workflow Steps
+1. Checkout repository with Git LFS
+2. Install Python dependencies
+3. Run optimized downloader
+4. Commit new data (if download succeeded)
+5. Clean old data from previous cycle
+6. Push to repository
 
-- `HH`: Initialization hour (00-23 UTC)
-- `XXX`: Forecast hour (000-002 in this configuration)
-- `prslev`: Pressure level data (includes REFC)
-- `3km`: 3 kilometer resolution
-- `na`: North America domain
+### Permissions
+- **contents: write** - Required to commit and push data
 
-### Metadata
+## Technical Details
 
-The `metadata.json` file contains:
-```json
-{
-  "last_update": "2025-11-14T12:00:00",
-  "cycle_date": "20251114",
-  "cycle_hour": "09",
-  "files_downloaded": 10,
-  "file_list": ["rrfs.t09z.natlev.f000.grib2", ...]
-}
+### Byte-Range Extraction Method
+
+The key innovation is using HTTP Range headers to download only the REFC portion:
+
+1. **Fetch .idx file** - Contains byte offsets for all fields in GRIB2 file
+2. **Find REFC offset** - Parse index to locate REFC field position
+3. **Range request** - Download only bytes containing REFC data
+4. **Save result** - Write REFC-only GRIB2 file
+
+Example:
+```
+Full file: 5 GB (fields 1-935)
+REFC location: Field #36 at bytes 245,393,432 to 253,087,912
+Download: Only those 7.69 MB
+Savings: 99.85%
 ```
 
-## Working with GRIB Data
+### Data Quality
 
-### Reading GRIB Files
+- **Source**: Official NOAA RRFS forecasts from AWS S3 bucket
+- **Resolution**: 3 km grid spacing
+- **Coverage**: Full North American domain
+- **Update Frequency**: Hourly
+- **Latency**: ~5 minutes (RRFS processing time)
 
-To work with the downloaded GRIB2 files, you can use:
+### Storage Requirements
 
-**Python (pygrib)**:
-```python
-import pygrib
+**Repository Storage:**
+- Short-range cycle (18 hrs): ~144 MB
+- Long-range cycle (60 hrs): ~480 MB
+- Long-range cycle (84 hrs): ~672 MB
 
-grib = pygrib.open('rrfs_data/rrfs.t12z.natlev.f001.grib2')
-refc = grib.select(name='Composite reflectivity')[0]
-data = refc.values
-lats, lons = refc.latlons()
-```
+**GitHub Limits:**
+- Free tier: 1 GB Git LFS storage, 1 GB/month bandwidth
+- Files stored efficiently with LFS
+- Old cycles cleaned automatically
 
-**Python (xarray + cfgrib)**:
-```python
-import xarray as xr
+## Troubleshooting
 
-ds = xr.open_dataset('rrfs_data/rrfs.t12z.natlev.f001.grib2',
-                      engine='cfgrib',
-                      backend_kwargs={'filter_by_keys': {'typeOfLevel': 'atmosphere'}})
-refc = ds['refc']
-```
+### "No files available"
+- RRFS may be temporarily offline for maintenance
+- Check https://registry.opendata.aws/noaa-rrfs/ for status
+- Workflow will retry next hour
 
-**Command line (wgrib2)**:
-```bash
-# List contents
-wgrib2 rrfs_data/rrfs.t12z.natlev.f001.grib2
+### "403 Permission denied"
+- Ensure workflow has `contents: write` permission
+- Check repository settings > Actions > General > Workflow permissions
 
-# Extract REFC to CSV
-wgrib2 rrfs_data/rrfs.t12z.natlev.f001.grib2 -match "REFC" -csv output.csv
-```
-
-## Important Notes
-
-### Data Availability
-
-RRFS data is operational and updated hourly. Check the [NOAA RRFS AWS Registry](https://registry.opendata.aws/noaa-rrfs/) for current status.
-
-### Storage Considerations
-
-#### Optimized REFC-Only Download (RECOMMENDED)
-- **File size**: ~7-8 MB per forecast hour (REFC field extracted via byte-range request)
-- **Default configuration**: 18 forecast hours = ~144 MB total
-- **Size reduction**: 99.85% smaller than downloading full GRIB files
-- **Storage strategy**: Only the latest cycle is kept (old data deleted before new download)
-- **GitHub Actions space**: Plenty of room - could download 100+ forecast hours if needed!
-
-#### Why So Small?
-The full GRIB files contain 935 meteorological fields (temperature, pressure, wind, etc. at multiple levels). REFC is just ONE 2D field. By using HTTP byte-range requests, we download only the ~7 MB REFC portion instead of the entire 5 GB file.
-
-### GitHub Actions Limits
-
-- **Workflow runs**: Limited minutes per month (2,000 for free accounts)
-- **Storage**: LFS and artifact storage counted separately
-- Consider adjusting schedule frequency based on needs
-
-## Configuration
-
-### Adjusting Update Frequency
-
-Edit `.github/workflows/download_rrfs_refc.yml`:
-
-```yaml
-schedule:
-  - cron: '0 */3 * * *'  # Every 3 hours (change as needed)
-```
-
-Common schedules:
-- Every hour: `'0 * * * *'`
-- Every 6 hours: `'0 */6 * * *'`
-- Daily at midnight UTC: `'0 0 * * *'`
-
-### Adjusting Forecast Hours
-
-In the workflow file or when running locally:
-
-```yaml
-# Download more forecast hours (ensure you have enough disk space!)
-run: python download_rrfs_refc.py --domain na --num-forecasts 6 --clean-before-download
-```
-
-**Note**: Each NA file is ~5 GB. GitHub Actions runners have ~14 GB free space.
-- 2 forecast hours: ~10 GB (safe)
-- 3 forecast hours: ~15 GB (current default, may be tight)
-- 6 forecast hours: ~30 GB (will fail - not enough space!)
-
-### Using Different Domains
-
-For smaller file sizes, use CONUS domain instead:
-
-```yaml
-# CONUS files are ~800 MB each - much smaller!
-run: python download_rrfs_refc.py --domain conus --num-forecasts 18 --clean-before-download
-```
+### "No space left on device"
+- Reduce forecast hours with `--num-forecasts`
+- Or switch to smaller domain (conus instead of na)
 
 ## Resources
 
-- [NOAA RRFS on AWS](https://registry.opendata.aws/noaa-rrfs/)
-- [RRFS Information (NOAA GSL)](https://gsl.noaa.gov/focus-areas/unified_forecast_system/rrfs)
-- [GRIB2 Documentation](https://www.nco.ncep.noaa.gov/pmb/docs/grib2/)
-- [Python pygrib](https://github.com/jswhit/pygrib)
-- [wgrib2 Tool](https://www.cpc.ncep.noaa.gov/products/wesley/wgrib2/)
-
-## Support
-
-For issues with:
-- **This repository**: Open an issue
-- **RRFS data access**: Contact [email protected]
-- **GitHub Actions**: See [GitHub Actions Documentation](https://docs.github.com/actions)
+- **NOAA RRFS**: https://gsl.noaa.gov/focus-areas/unified_forecast_system/rrfs
+- **AWS Data Registry**: https://registry.opendata.aws/noaa-rrfs/
+- **GRIB2 Documentation**: https://www.nco.ncep.noaa.gov/pmb/docs/grib2/
+- **pygrib**: https://github.com/jswhit/pygrib
+- **cfgrib**: https://github.com/ecmwf/cfgrib
+- **wgrib2**: https://www.cpc.ncep.noaa.gov/products/wesley/wgrib2/
 
 ## License
 
-This script is provided as-is for downloading public NOAA data. RRFS data is publicly available through NOAA's Open Data Dissemination program.
+This automation script is provided as-is for downloading public NOAA data. RRFS data is freely available through NOAA's Open Data Dissemination program.
+
+## Contributing
+
+Issues and improvements welcome! This is an open-source project for accessing public weather data.
+
+---
+
+**Built with**:
+- Python 3.11
+- GitHub Actions
+- Git LFS
+- NOAA RRFS Data
