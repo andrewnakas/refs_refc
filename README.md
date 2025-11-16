@@ -1,6 +1,8 @@
-# RRFS REFC Data Auto-Downloader
+# RRFS REFC Auto-Downloader & Visualizer
 
-**Automated hourly downloads of NOAA RRFS Composite Reflectivity (radar) data for North America**
+**Automated hourly downloads and visualization of NOAA RRFS Composite Reflectivity (radar) data for North America**
+
+> **NEW**: Now includes automated web visualization with proper rotated pole projection! View at: https://[your-username].github.io/refs_refc/
 
 ## What This Does
 
@@ -258,6 +260,29 @@ Savings: 99.85%
 ### "No space left on device"
 - Reduce forecast hours with `--num-forecasts`
 - Or switch to smaller domain (conus instead of na)
+
+## Live Visualization
+
+**Interactive Map**: https://[your-username].github.io/[repository-name]/
+
+This repository automatically builds an interactive Leaflet map visualization of the RRFS REFC data:
+
+### Features
+
+- **Animated Radar Forecasts**: Step through forecast hours with play/pause controls
+- **Interactive Map**: Pan and zoom across North America
+- **NWS Color Scale**: Standard weather radar reflectivity colors (dBZ)
+- **Real-time Updates**: Automatically rebuilds when new data is downloaded
+- **Mobile Friendly**: Responsive design works on all devices
+
+### How Visualization Works
+
+1. **Automatic Processing**: GitHub Actions converts GRIB2 files to PNG tiles
+2. **Web Deployment**: Static site deployed to GitHub Pages
+3. **Leaflet Map**: Client-side JavaScript for smooth interaction
+4. **Hourly Updates**: Rebuilds whenever new forecast data arrives
+
+The visualization shows composite reflectivity (simulated radar) for the entire forecast period (18-84 hours depending on cycle).
 
 ## Resources
 
