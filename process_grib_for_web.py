@@ -369,6 +369,15 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
     """
     print(f"\nProcessing {grib_file.name}...")
 
+    # Check if file is a Git LFS pointer (should be >1KB for real GRIB file)
+    file_size = grib_file.stat().st_size
+    if file_size < 1024:
+        print(f"  ERROR: File is only {file_size} bytes - likely a Git LFS pointer!")
+        print(f"  Run 'git lfs pull' to download actual GRIB files")
+        return None
+
+    print(f"  File size: {file_size / 1024 / 1024:.2f} MB")
+
     # Try to process with available library
     result = None
     if HAS_PYGRIB:
@@ -376,15 +385,19 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
             result = process_with_pygrib(grib_file)
         except Exception as e:
             print(f"  Error with pygrib: {e}")
+            import traceback
+            traceback.print_exc()
 
     if result is None and HAS_CFGRIB:
         try:
             result = process_with_cfgrib(grib_file)
         except Exception as e:
             print(f"  Error with cfgrib: {e}")
+            import traceback
+            traceback.print_exc()
 
     if result is None:
-        print(f"  Skipping {grib_file.name} - no GRIB library available")
+        print(f"  ERROR: Failed to process {grib_file.name} with available GRIB libraries")
         return None
 
     # Reproject to regular geographic grid focused on North America
@@ -537,8 +550,18 @@ def main():
         return 1
 
     print("\n" + "=" * 60)
-    print(f"Processing complete: {len(result['forecasts'])} forecasts")
-    print(f"Output directory: {OUTPUT_DIR.absolute()}")
+    print(f"Processing complete!")
+    print(f"  Forecasts processed: {len(result['forecasts'])}")
+    print(f"  Output directory: {OUTPUT_DIR.absolute()}")
+    print(f"  Tiles created: {len(list(TILES_DIR.glob('*.png')))}")
+
+    if len(result['forecasts']) == 0:
+        print("\n  WARNING: No forecasts were successfully processed!")
+        print("  Check the error messages above for details.")
+        return 1
+
+    print(f"\n  Bounds: lat [{result['bounds']['lat_min']:.1f}, {result['bounds']['lat_max']:.1f}], "
+          f"lon [{result['bounds']['lon_min']:.1f}, {result['bounds']['lon_max']:.1f}]")
     print("=" * 60)
 
     return 0
