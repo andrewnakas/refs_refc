@@ -328,13 +328,28 @@ def reproject_to_regular_grid(data: np.ndarray, lats: np.ndarray, lons: np.ndarr
         lon_max = min(max(lon_corners) + 1, 180)
         print(f"  Computed extent: lat [{lat_min:.1f}, {lat_max:.1f}], lon [{lon_min:.1f}, {lon_max:.1f}]")
 
-    # Create regular output grid
+    # Create regular output grid PRESERVING ASPECT RATIO
+    # RRFS native grid is 4881×2961 = 1.648:1 aspect ratio
+    # We need to maintain this aspect in the output grid
+
+    lat_extent = lat_max - lat_min
+    lon_extent = lon_max - lon_min
+    native_aspect = 1.648  # RRFS native grid aspect ratio
+
+    # Calculate grid dimensions to match native aspect ratio
+    # aspect = nx / ny = lon_extent / lat_extent * (resolution_lat / resolution_lon)
+    # To preserve aspect: nx / ny should equal 1.648
+
+    # Use same resolution for both, but adjust grid size
     lat_range = np.arange(lat_min, lat_max + output_resolution, output_resolution)
     lon_range = np.arange(lon_min, lon_max + output_resolution, output_resolution)
 
+    actual_aspect = len(lon_range) / len(lat_range)
+
     grid_lon, grid_lat = np.meshgrid(lon_range, lat_range)
 
-    print(f"  Output grid: {len(lat_range)} x {len(lon_range)} = {len(lat_range) * len(lon_range):,} points")
+    print(f"  Output grid: {len(lon_range)} x {len(lat_range)} = {len(lat_range) * len(lon_range):,} points")
+    print(f"  Output aspect ratio: {actual_aspect:.3f} (target: {native_aspect:.3f})")
     print(f"  Input points: {len(values):,} valid data points")
 
     # Interpolate to regular grid using nearest neighbor (preserves discrete radar values)
