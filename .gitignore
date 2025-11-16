@@ -18,3 +18,8 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Data (downloaded fresh by workflow)
+rrfs_data/*.grib2
+rrfs_data/*.grib2.idx
+rrfs_data/metadata.json
