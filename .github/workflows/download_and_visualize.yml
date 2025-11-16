@@ -1,6 +1,11 @@
 name: Download and Visualize RRFS REFC Data
 
 on:
+  # Run on push to feature branch
+  push:
+    branches:
+      - 'claude/rrfs-refc-leaflet-map-*'
+
   # Run on a schedule - every hour
   schedule:
     - cron: '15 * * * *'  # Every hour at 15 minutes past
