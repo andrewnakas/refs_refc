@@ -67,6 +67,11 @@ jobs:
           echo "Generating static maps with correct rotated pole projection..."
           python create_static_map.py
 
+      - name: Generate perfect Leaflet image (exact bounds)
+        run: |
+          echo "Generating pixel-perfect Leaflet image with EXACT GRIB bounds..."
+          python create_perfect_leaflet_tile.py
+
       - name: Generate Leaflet tiles (fallback)
         run: |
           echo "Generating Leaflet tiles (legacy approach)..."

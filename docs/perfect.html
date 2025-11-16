@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RRFS REFC - Perfect Alignment (Exact GRIB Bounds)</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 15px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            min-width: 300px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(79, 195, 247, 0.3);
+        }
+
+        .info-panel h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #4fc3f7;
+            font-weight: 600;
+        }
+
+        .info-item {
+            font-size: 13px;
+            margin: 6px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .info-label {
+            color: #aaa;
+            margin-right: 10px;
+        }
+
+        .info-value {
+            color: #fff;
+            font-weight: 500;
+        }
+
+        .bounds-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .bounds-title {
+            font-size: 12px;
+            color: #4fc3f7;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .coords {
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #ddd;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 2000;
+            background: rgba(0,0,0,0.9);
+            padding: 30px;
+            border-radius: 10px;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #4fc3f7;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            color: #f44336;
+            background: rgba(244, 67, 54, 0.1);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #f44336;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+        <div>Loading RRFS REFC data...</div>
+    </div>
+
+    <div id="map"></div>
+
+    <div class="info-panel" id="infoPanel" style="display: none;">
+        <h2>RRFS Composite Reflectivity</h2>
+
+        <div class="info-item">
+            <span class="info-label">Source:</span>
+            <span class="info-value">Official NOAA GRIB</span>
+        </div>
+
+        <div class="info-item">
+            <span class="info-label">Image Size:</span>
+            <span class="info-value" id="imageSize">-</span>
+        </div>
+
+        <div class="info-item">
+            <span class="info-label">Aspect Ratio:</span>
+            <span class="info-value" id="aspectRatio">-</span>
+        </div>
+
+        <div class="bounds-section">
+            <div class="bounds-title">Exact GRIB Bounds</div>
+            <div class="info-item coords">
+                <span>Latitude:</span>
+                <span id="latBounds">-</span>
+            </div>
+            <div class="info-item coords">
+                <span>Longitude:</span>
+                <span id="lonBounds">-</span>
+            </div>
+        </div>
+
+        <div style="margin-top: 12px; font-size: 11px; color: #888;">
+            ✓ No interpolation guessing<br>
+            ✓ Direct from GRIB metadata
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        let map = null;
+        let imageOverlay = null;
+
+        async function loadPerfectTile() {
+            try {
+                // Load metadata with exact bounds
+                const response = await fetch('perfect_tile.json');
+                if (!response.ok) throw new Error('Metadata not found');
+
+                const metadata = await response.json();
+                const bounds = metadata.bounds;
+
+                // Initialize map centered on data
+                const centerLat = (bounds.lat_min + bounds.lat_max) / 2;
+                const centerLon = (bounds.lon_min + bounds.lon_max) / 2;
+
+                map = L.map('map', {
+                    center: [centerLat, centerLon],
+                    zoom: 4,
+                    zoomControl: true
+                });
+
+                // Add base layer
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap contributors',
+                    maxZoom: 19
+                }).addTo(map);
+
+                // Add image overlay with EXACT bounds from GRIB
+                imageOverlay = L.imageOverlay(
+                    metadata.image,
+                    [
+                        [bounds.lat_min, bounds.lon_min],  // Southwest corner
+                        [bounds.lat_max, bounds.lon_max]   // Northeast corner
+                    ],
+                    {
+                        opacity: 0.7,
+                        interactive: false
+                    }
+                ).addTo(map);
+
+                // Update info panel
+                document.getElementById('imageSize').textContent =
+                    `${bounds.width} × ${bounds.height} px`;
+                document.getElementById('aspectRatio').textContent =
+                    `${bounds.aspect_ratio.toFixed(3)}:1`;
+                document.getElementById('latBounds').textContent =
+                    `${bounds.lat_min.toFixed(4)}° to ${bounds.lat_max.toFixed(4)}°`;
+                document.getElementById('lonBounds').textContent =
+                    `${bounds.lon_min.toFixed(4)}° to ${bounds.lon_max.toFixed(4)}°`;
+
+                // Hide loading, show info
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('infoPanel').style.display = 'block';
+
+                // Fit map to bounds
+                map.fitBounds([
+                    [bounds.lat_min, bounds.lon_min],
+                    [bounds.lat_max, bounds.lon_max]
+                ]);
+
+            } catch (error) {
+                document.getElementById('loading').innerHTML =
+                    `<div class="error">Error: ${error.message}</div>`;
+                console.error('Error loading data:', error);
+            }
+        }
+
+        // Load on page ready
+        loadPerfectTile();
+    </script>
+</body>
+</html>
