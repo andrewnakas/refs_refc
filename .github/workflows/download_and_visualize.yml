@@ -82,6 +82,10 @@ jobs:
           echo "=== Generated files in docs/ ==="
           ls -lh docs/
           echo ""
+          echo "=== Perfect Leaflet Tile (EXACT bounds) ==="
+          ls -lh docs/tiles/refc_perfect.png 2>/dev/null || echo "No perfect tile"
+          cat docs/perfect_tile.json 2>/dev/null || echo "No perfect tile metadata"
+          echo ""
           echo "=== Static Maps (Cartopy) ==="
           ls -lh docs/maps/ 2>/dev/null || echo "No maps directory"
           echo ""
