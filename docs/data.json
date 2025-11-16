@@ -1,0 +1,19 @@
+{
+  "generated": "2025-11-16T00:00:00Z",
+  "source": {
+    "last_update": "2025-11-16T00:00:00Z",
+    "cycle_date": "20251116",
+    "cycle_hour": "00",
+    "forecast_range_type": "short",
+    "max_forecast_hour": 0,
+    "note": "Placeholder - will be replaced when GRIB files are processed"
+  },
+  "forecasts": [],
+  "bounds": {
+    "lat_min": 20.0,
+    "lat_max": 55.0,
+    "lon_min": -130.0,
+    "lon_max": -60.0,
+    "projection": "rotated_latlon"
+  }
+}
