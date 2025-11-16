@@ -1,6 +1,8 @@
-# RRFS REFC Data Auto-Downloader
+# RRFS REFC Auto-Downloader & Visualizer
 
-**Automated hourly downloads of NOAA RRFS Composite Reflectivity (radar) data for North America**
+**Automated hourly downloads and visualization of NOAA RRFS Composite Reflectivity (radar) data for North America**
+
+> **NEW**: Now includes automated web visualization with proper rotated pole projection! View at: https://[your-username].github.io/refs_refc/
 
 ## What This Does
 

@@ -1,10 +1,11 @@
-name: Build and Deploy RRFS REFC Visualization to GitHub Pages (LEGACY - for testing only)
+name: Download and Visualize RRFS REFC Data
 
 on:
-  # DISABLED - use download_and_visualize.yml instead
-  # This workflow is kept for manual testing only
+  # Run on a schedule - every hour
+  schedule:
+    - cron: '15 * * * *'  # Every hour at 15 minutes past
 
-  # Allow manual triggering only
+  # Allow manual triggering
   workflow_dispatch:
 
 permissions:
@@ -14,36 +15,18 @@ permissions:
 
 # Allow only one concurrent deployment
 concurrency:
-  group: "pages"
+  group: "pages-rrfs"
   cancel-in-progress: false
 
 jobs:
-  build:
+  download-and-visualize:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true  # Use built-in LFS support
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Verify LFS files downloaded
-        run: |
-          echo "Verifying Git LFS files were downloaded:"
-          ls -lh rrfs_data/*.grib2 2>/dev/null | head -5 || echo "No GRIB files found"
-          echo ""
-          echo "Checking file sizes:"
-          for f in rrfs_data/*.grib2; do
-            if [ -f "$f" ]; then
-              size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null)
-              if [ "$size" -lt 1024 ]; then
-                echo "WARNING: $f is only $size bytes (likely LFS pointer!)"
-              else
-                echo "OK: $f is $(($size / 1024 / 1024)) MB"
-              fi
-            fi
-          done
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -60,22 +43,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install numpy scipy pillow xarray eccodes cfgrib requests matplotlib cartopy
 
-      - name: Make processing scripts executable
+      - name: Download RRFS REFC data
         run: |
-          chmod +x process_grib_for_web.py
-          chmod +x create_static_map.py
+          mkdir -p rrfs_data
+          python download_rrfs_refc_optimized.py --domain na --forecast-hours 0
+        continue-on-error: true
 
-      - name: Create static maps with Cartopy (proper projection)
+      - name: List downloaded files
+        run: |
+          echo "=== Downloaded GRIB files ==="
+          ls -lh rrfs_data/*.grib2 2>/dev/null || echo "No GRIB files found"
+          echo ""
+          echo "Checking file sizes:"
+          for f in rrfs_data/*.grib2; do
+            if [ -f "$f" ]; then
+              size=$(stat -c%s "$f" 2>/dev/null || echo "0")
+              echo "  $f: $(($size / 1024 / 1024)) MB"
+            fi
+          done
+
+      - name: Generate static maps with Cartopy
         run: |
           echo "Generating static maps with correct rotated pole projection..."
           python create_static_map.py
 
-      - name: Process GRIB files for Leaflet tiles (fallback)
+      - name: Generate Leaflet tiles (fallback)
         run: |
           echo "Generating Leaflet tiles (legacy approach)..."
           python process_grib_for_web.py || echo "Tile processing completed with warnings"
 
-      - name: List generated files
+      - name: List generated visualizations
         run: |
           echo "=== Generated files in docs/ ==="
           ls -lh docs/
@@ -85,11 +82,6 @@ jobs:
           echo ""
           echo "=== Tiles (Leaflet fallback) ==="
           ls -lh docs/tiles/ 2>/dev/null || echo "No tiles directory"
-          echo ""
-          echo "=== Metadata files ==="
-          cat docs/maps_data.json 2>/dev/null || echo "No maps_data.json"
-          echo ""
-          cat docs/data.json 2>/dev/null || echo "No data.json"
 
       - name: Create .nojekyll file
         run: touch docs/.nojekyll
@@ -101,7 +93,7 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    needs: build
+    needs: download-and-visualize
     permissions:
       pages: write
       id-token: write
