@@ -2,6 +2,7 @@
 """
 Process RRFS REFC GRIB2 files for web visualization.
 Converts GRIB2 data to GeoJSON and PNG tiles for Leaflet maps.
+Handles rotated lat-lon grids by reprojecting to regular geographic grid.
 """
 
 import os
@@ -12,6 +13,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 from PIL import Image
 import subprocess
+from scipy.interpolate import griddata
 
 # Try importing GRIB libraries
 try:
@@ -31,6 +33,14 @@ except ImportError:
 DATA_DIR = Path("rrfs_data")
 OUTPUT_DIR = Path("docs")
 TILES_DIR = OUTPUT_DIR / "tiles"
+
+# North America focused bounds for output
+NA_BOUNDS = {
+    'lat_min': 15.0,
+    'lat_max': 72.0,
+    'lon_min': -175.0,
+    'lon_max': -40.0
+}
 
 
 def setup_output_dirs():
@@ -262,6 +272,64 @@ def data_to_rgba(data: np.ndarray) -> np.ndarray:
     return rgba
 
 
+def reproject_to_regular_grid(data: np.ndarray, lats: np.ndarray, lons: np.ndarray,
+                              output_resolution: float = 0.05) -> tuple:
+    """
+    Reproject data from rotated/irregular grid to regular geographic lat-lon grid.
+
+    Args:
+        data: 2D array of data values
+        lats: 2D array of latitudes for each data point
+        lons: 2D array of longitudes for each data point
+        output_resolution: Resolution of output grid in degrees
+
+    Returns:
+        Tuple of (regridded_data, output_lats, output_lons)
+    """
+    print(f"  Reprojecting from rotated grid to regular geographic grid...")
+
+    # Flatten the arrays for griddata
+    points = np.column_stack((lons.flatten(), lats.flatten()))
+    values = data.flatten()
+
+    # Remove any NaN or invalid points
+    valid_mask = ~(np.isnan(values) | np.isnan(points[:, 0]) | np.isnan(points[:, 1]))
+    points = points[valid_mask]
+    values = values[valid_mask]
+
+    # Focus on North America bounds
+    na_mask = (
+        (points[:, 1] >= NA_BOUNDS['lat_min']) &
+        (points[:, 1] <= NA_BOUNDS['lat_max']) &
+        (points[:, 0] >= NA_BOUNDS['lon_min']) &
+        (points[:, 0] <= NA_BOUNDS['lon_max'])
+    )
+
+    if na_mask.sum() == 0:
+        print(f"  Warning: No data points in North America bounds!")
+        # Use full bounds instead
+        na_mask = np.ones(len(points), dtype=bool)
+
+    points = points[na_mask]
+    values = values[na_mask]
+
+    # Create regular output grid
+    lat_range = np.arange(NA_BOUNDS['lat_min'], NA_BOUNDS['lat_max'] + output_resolution, output_resolution)
+    lon_range = np.arange(NA_BOUNDS['lon_min'], NA_BOUNDS['lon_max'] + output_resolution, output_resolution)
+
+    grid_lon, grid_lat = np.meshgrid(lon_range, lat_range)
+
+    print(f"  Output grid: {len(lat_range)}x{len(lon_range)} points")
+    print(f"  Input points: {len(values)} valid data points")
+
+    # Interpolate to regular grid using nearest neighbor (faster and preserves discrete radar values)
+    grid_data = griddata(points, values, (grid_lon, grid_lat), method='nearest', fill_value=np.nan)
+
+    print(f"  Reprojection complete: {grid_data.shape}")
+
+    return grid_data, grid_lat, grid_lon
+
+
 def create_png_tile(data: np.ndarray, output_path: Path):
     """
     Create PNG tile from REFC data.
@@ -282,6 +350,7 @@ def create_png_tile(data: np.ndarray, output_path: Path):
 def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
     """
     Process a single GRIB file and create web assets.
+    Reprojects rotated grid data to regular geographic grid.
     """
     print(f"\nProcessing {grib_file.name}...")
 
@@ -303,20 +372,41 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
         print(f"  Skipping {grib_file.name} - no GRIB library available")
         return None
 
-    # Create PNG tile
-    tile_path = TILES_DIR / f"refc_f{forecast_hour:03d}.png"
-    create_png_tile(result['data'], tile_path)
+    # Reproject to regular geographic grid
+    try:
+        regridded_data, grid_lats, grid_lons = reproject_to_regular_grid(
+            result['data'],
+            result['lats'],
+            result['lons'],
+            output_resolution=0.05  # 0.05 degree = ~5.5km resolution
+        )
+    except Exception as e:
+        print(f"  Error during reprojection: {e}")
+        print(f"  Falling back to original data")
+        regridded_data = result['data']
 
-    # Create metadata
+    # Create PNG tile from reprojected data
+    tile_path = TILES_DIR / f"refc_f{forecast_hour:03d}.png"
+    create_png_tile(regridded_data, tile_path)
+
+    # Create metadata with North America bounds
     metadata = {
         'forecast_hour': forecast_hour,
         'file': grib_file.name,
         'tile': f"tiles/refc_f{forecast_hour:03d}.png",
-        'grid': result['grid_info'],
+        'grid': {
+            'lat_min': NA_BOUNDS['lat_min'],
+            'lat_max': NA_BOUNDS['lat_max'],
+            'lon_min': NA_BOUNDS['lon_min'],
+            'lon_max': NA_BOUNDS['lon_max'],
+            'projection': 'regular_ll',
+            'reprojected': True,
+            'original_projection': result['grid_info'].get('projection', 'unknown')
+        },
         'stats': {
-            'min': float(np.nanmin(result['data'])),
-            'max': float(np.nanmax(result['data'])),
-            'mean': float(np.nanmean(result['data']))
+            'min': float(np.nanmin(regridded_data)),
+            'max': float(np.nanmax(regridded_data)),
+            'mean': float(np.nanmean(regridded_data))
         }
     }
 
@@ -362,18 +452,19 @@ def process_all_gribs():
         if meta:
             forecast_metadata.append(meta)
 
-    # Determine bounds from first successful forecast or use RRFS NA defaults
+    # Determine bounds from first successful forecast or use NA defaults
     if forecast_metadata:
         bounds = forecast_metadata[0]['grid']
     else:
-        print("  Warning: No forecasts processed successfully, using RRFS NA default bounds")
-        # RRFS NA domain actual bounds (rotated lat-lon grid)
+        print("  Warning: No forecasts processed successfully, using NA default bounds")
+        # North America geographic bounds (after reprojection)
         bounds = {
-            'lat_min': -1.61,
-            'lat_max': 90.0,
-            'lon_min': -180.0,
-            'lon_max': 180.0,
-            'projection': 'rotated_ll'
+            'lat_min': NA_BOUNDS['lat_min'],
+            'lat_max': NA_BOUNDS['lat_max'],
+            'lon_min': NA_BOUNDS['lon_min'],
+            'lon_max': NA_BOUNDS['lon_max'],
+            'projection': 'regular_ll',
+            'reprojected': True
         }
 
     # Create output metadata

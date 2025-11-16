@@ -10,11 +10,12 @@
   },
   "forecasts": [],
   "bounds": {
-    "lat_min": -1.61,
-    "lat_max": 90.0,
-    "lon_min": -180.0,
-    "lon_max": 180.0,
-    "projection": "rotated_ll",
-    "note": "RRFS NA domain uses rotated lat-lon grid covering Northern Hemisphere"
+    "lat_min": 15.0,
+    "lat_max": 72.0,
+    "lon_min": -175.0,
+    "lon_max": -40.0,
+    "projection": "regular_ll",
+    "reprojected": true,
+    "note": "RRFS data reprojected from rotated grid to regular North America geographic grid"
   }
 }
