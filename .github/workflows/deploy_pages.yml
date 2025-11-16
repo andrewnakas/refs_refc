@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - claude/rrfs-refc-leaflet-map-01NpPdbxBGK6XNJjoBNqseKd
+      - claude/github-actions-rrfs-download-01MZQaSh7Vdc2J8VtgMZqT2V
     paths:
       - 'rrfs_data/**'
       - 'process_grib_for_web.py'
