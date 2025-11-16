@@ -11,11 +11,11 @@
   "forecasts": [],
   "bounds": {
     "lat_min": 15.0,
-    "lat_max": 72.0,
-    "lon_min": -175.0,
+    "lat_max": 75.0,
+    "lon_min": -180.0,
     "lon_max": -40.0,
     "projection": "regular_ll",
     "reprojected": true,
-    "note": "RRFS data reprojected from rotated grid to regular North America geographic grid"
+    "note": "RRFS_NA_3km data reprojected from rotated lat-lon grid (south pole: -35.0°N, 247.0°E) to regular geographic grid"
   }
 }

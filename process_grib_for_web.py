@@ -34,11 +34,20 @@ DATA_DIR = Path("rrfs_data")
 OUTPUT_DIR = Path("docs")
 TILES_DIR = OUTPUT_DIR / "tiles"
 
-# North America focused bounds for output
+# RRFS_NA_3km official grid specification
+# Source: UFS SRWeather App predef_grid_params.yaml
+RRFS_NA_ROTATION = {
+    'south_pole_lat': -35.0,  # Southern pole of rotated grid
+    'south_pole_lon': 247.0,  # Southern pole longitude (or -113.0°W)
+    'grid_center_lat': 55.0,  # Physical grid center
+    'grid_center_lon': -112.5  # Physical grid center
+}
+
+# North America focused bounds for output (based on actual RRFS_NA coverage)
 NA_BOUNDS = {
     'lat_min': 15.0,
-    'lat_max': 72.0,
-    'lon_min': -175.0,
+    'lat_max': 75.0,
+    'lon_min': -180.0,
     'lon_max': -40.0
 }
 
@@ -456,15 +465,17 @@ def process_all_gribs():
     if forecast_metadata:
         bounds = forecast_metadata[0]['grid']
     else:
-        print("  Warning: No forecasts processed successfully, using NA default bounds")
-        # North America geographic bounds (after reprojection)
+        print("  Warning: No forecasts processed successfully, using RRFS_NA default bounds")
+        # RRFS_NA_3km geographic bounds (after reprojection from rotated grid)
         bounds = {
             'lat_min': NA_BOUNDS['lat_min'],
             'lat_max': NA_BOUNDS['lat_max'],
             'lon_min': NA_BOUNDS['lon_min'],
             'lon_max': NA_BOUNDS['lon_max'],
             'projection': 'regular_ll',
-            'reprojected': True
+            'reprojected': True,
+            'source_grid': 'RRFS_NA_3km',
+            'rotation_params': RRFS_NA_ROTATION
         }
 
     # Create output metadata

@@ -265,8 +265,9 @@
 
     <script>
         // Configuration
-        const DEFAULT_CENTER = [43.5, -107.5]; // Center on North America
-        const DEFAULT_ZOOM = 4;
+        // RRFS_NA_3km grid center is at 55.0°N, -112.5°W
+        const DEFAULT_CENTER = [50.0, -110.0]; // Center on North America (RRFS_NA domain)
+        const DEFAULT_ZOOM = 3;
         let map, imageOverlay;
         let forecastData = null;
         let currentFrame = 0;
