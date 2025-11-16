@@ -194,25 +194,62 @@ def load_grib_data(grib_file):
     if HAS_CFGRIB:
         try:
             ds = xr.open_dataset(grib_file, engine='cfgrib')
+
+            print(f"  Available variables: {list(ds.data_vars)}")
+
             # Get REFC variable (composite reflectivity)
-            if 'refc' in ds:
-                data = ds['refc'].values
+            # Try different possible names
+            refc_var = None
+            for var_name in ['refc', 'REFC', 'unknown', 'maxrefc', 'composite_reflectivity']:
+                if var_name in ds:
+                    refc_var = var_name
+                    break
+
+            if refc_var:
+                data = ds[refc_var].values
                 lats = ds['latitude'].values
                 lons = ds['longitude'].values
+                print(f"  Successfully loaded '{refc_var}' from GRIB file")
                 return data, lats, lons
+            else:
+                print(f"  WARNING: REFC variable not found in GRIB file")
+                print(f"  Available variables: {list(ds.data_vars)}")
         except Exception as e:
-            print(f"cfgrib error: {e}")
+            print(f"  cfgrib error: {e}")
+            import traceback
+            traceback.print_exc()
 
     if HAS_PYGRIB:
         try:
             grbs = pygrib.open(str(grib_file))
-            grb = grbs.select(name='Maximum/Composite radar reflectivity')[0]
+
+            # List all messages
+            print(f"  GRIB messages in file:")
+            for i, grb in enumerate(grbs):
+                print(f"    {i+1}. {grb.name} - {grb.shortName}")
+            grbs.rewind()
+
+            # Try to find REFC
+            try:
+                grb = grbs.select(name='Maximum/Composite radar reflectivity')[0]
+            except ValueError:
+                # Try alternative names
+                try:
+                    grb = grbs.select(shortName='refc')[0]
+                except ValueError:
+                    print(f"  WARNING: Could not find REFC field")
+                    grbs.close()
+                    return None, None, None
+
             lats, lons = grb.latlons()
             data = grb.values
             grbs.close()
+            print(f"  Successfully loaded REFC from GRIB file with pygrib")
             return data, lats, lons
         except Exception as e:
-            print(f"pygrib error: {e}")
+            print(f"  pygrib error: {e}")
+            import traceback
+            traceback.print_exc()
 
     return None, None, None
 
