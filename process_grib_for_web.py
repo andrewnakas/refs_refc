@@ -286,55 +286,56 @@ def reproject_to_regular_grid(data: np.ndarray, lats: np.ndarray, lons: np.ndarr
     """
     Reproject data from rotated/irregular grid to regular geographic lat-lon grid.
 
+    The GRIB lat/lon arrays are already in geographic coordinates (rotation has been applied).
+    We just need to interpolate from the irregular grid to a regular grid.
+
     Args:
         data: 2D array of data values
-        lats: 2D array of latitudes for each data point
-        lons: 2D array of longitudes for each data point
+        lats: 2D array of latitudes for each data point (already in geographic coords)
+        lons: 2D array of longitudes for each data point (already in geographic coords)
         output_resolution: Resolution of output grid in degrees
 
     Returns:
         Tuple of (regridded_data, output_lats, output_lons)
     """
-    print(f"  Reprojecting from rotated grid to regular geographic grid...")
+    print(f"  Regridding from irregular to regular geographic grid...")
 
     # Flatten the arrays for griddata
     points = np.column_stack((lons.flatten(), lats.flatten()))
     values = data.flatten()
 
-    # Remove any NaN or invalid points
+    # Remove any NaN or invalid points (but keep ALL valid data - don't filter by bounds yet)
     valid_mask = ~(np.isnan(values) | np.isnan(points[:, 0]) | np.isnan(points[:, 1]))
     points = points[valid_mask]
     values = values[valid_mask]
 
-    # Focus on North America bounds
-    na_mask = (
-        (points[:, 1] >= NA_BOUNDS['lat_min']) &
-        (points[:, 1] <= NA_BOUNDS['lat_max']) &
-        (points[:, 0] >= NA_BOUNDS['lon_min']) &
-        (points[:, 0] <= NA_BOUNDS['lon_max'])
-    )
+    # Determine actual data extent
+    actual_lat_min = float(points[:, 1].min())
+    actual_lat_max = float(points[:, 1].max())
+    actual_lon_min = float(points[:, 0].min())
+    actual_lon_max = float(points[:, 0].max())
 
-    if na_mask.sum() == 0:
-        print(f"  Warning: No data points in North America bounds!")
-        # Use full bounds instead
-        na_mask = np.ones(len(points), dtype=bool)
+    print(f"  Actual data extent: lat [{actual_lat_min:.2f}, {actual_lat_max:.2f}], lon [{actual_lon_min:.2f}, {actual_lon_max:.2f}]")
 
-    points = points[na_mask]
-    values = values[na_mask]
+    # Create regular output grid that covers the actual data extent
+    # Add small buffer to ensure we capture edge data
+    lat_min = max(actual_lat_min - 1, -90)
+    lat_max = min(actual_lat_max + 1, 90)
+    lon_min = max(actual_lon_min - 1, -180)
+    lon_max = min(actual_lon_max + 1, 180)
 
-    # Create regular output grid
-    lat_range = np.arange(NA_BOUNDS['lat_min'], NA_BOUNDS['lat_max'] + output_resolution, output_resolution)
-    lon_range = np.arange(NA_BOUNDS['lon_min'], NA_BOUNDS['lon_max'] + output_resolution, output_resolution)
+    lat_range = np.arange(lat_min, lat_max + output_resolution, output_resolution)
+    lon_range = np.arange(lon_min, lon_max + output_resolution, output_resolution)
 
     grid_lon, grid_lat = np.meshgrid(lon_range, lat_range)
 
-    print(f"  Output grid: {len(lat_range)}x{len(lon_range)} points")
-    print(f"  Input points: {len(values)} valid data points")
+    print(f"  Output grid: {len(lat_range)}x{len(lon_range)} points ({lat_range[0]:.1f}° to {lat_range[-1]:.1f}°, {lon_range[0]:.1f}° to {lon_range[-1]:.1f}°)")
+    print(f"  Input points: {len(values):,} valid data points")
 
     # Interpolate to regular grid using nearest neighbor (faster and preserves discrete radar values)
     grid_data = griddata(points, values, (grid_lon, grid_lat), method='nearest', fill_value=np.nan)
 
-    print(f"  Reprojection complete: {grid_data.shape}")
+    print(f"  Regridding complete: {grid_data.shape}")
 
     return grid_data, grid_lat, grid_lon
 
@@ -389,28 +390,41 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
             result['lons'],
             output_resolution=0.05  # 0.05 degree = ~5.5km resolution
         )
+
+        # Get actual bounds from regridded data
+        actual_lat_min = float(np.nanmin(grid_lats))
+        actual_lat_max = float(np.nanmax(grid_lats))
+        actual_lon_min = float(np.nanmin(grid_lons))
+        actual_lon_max = float(np.nanmax(grid_lons))
+
     except Exception as e:
         print(f"  Error during reprojection: {e}")
         print(f"  Falling back to original data")
         regridded_data = result['data']
+        # Use original bounds if reprojection failed
+        actual_lat_min = result['grid_info'].get('lat_min', NA_BOUNDS['lat_min'])
+        actual_lat_max = result['grid_info'].get('lat_max', NA_BOUNDS['lat_max'])
+        actual_lon_min = result['grid_info'].get('lon_min', NA_BOUNDS['lon_min'])
+        actual_lon_max = result['grid_info'].get('lon_max', NA_BOUNDS['lon_max'])
 
     # Create PNG tile from reprojected data
     tile_path = TILES_DIR / f"refc_f{forecast_hour:03d}.png"
     create_png_tile(regridded_data, tile_path)
 
-    # Create metadata with North America bounds
+    # Create metadata with actual data bounds
     metadata = {
         'forecast_hour': forecast_hour,
         'file': grib_file.name,
         'tile': f"tiles/refc_f{forecast_hour:03d}.png",
         'grid': {
-            'lat_min': NA_BOUNDS['lat_min'],
-            'lat_max': NA_BOUNDS['lat_max'],
-            'lon_min': NA_BOUNDS['lon_min'],
-            'lon_max': NA_BOUNDS['lon_max'],
+            'lat_min': actual_lat_min,
+            'lat_max': actual_lat_max,
+            'lon_min': actual_lon_min,
+            'lon_max': actual_lon_max,
             'projection': 'regular_ll',
             'reprojected': True,
-            'original_projection': result['grid_info'].get('projection', 'unknown')
+            'original_projection': result['grid_info'].get('projection', 'unknown'),
+            'source_grid': 'RRFS_NA_3km'
         },
         'stats': {
             'min': float(np.nanmin(regridded_data)),
@@ -461,17 +475,17 @@ def process_all_gribs():
         if meta:
             forecast_metadata.append(meta)
 
-    # Determine bounds from first successful forecast or use NA defaults
+    # Determine bounds from first successful forecast or use default extents
     if forecast_metadata:
         bounds = forecast_metadata[0]['grid']
     else:
-        print("  Warning: No forecasts processed successfully, using RRFS_NA default bounds")
-        # RRFS_NA_3km geographic bounds (after reprojection from rotated grid)
+        print("  Warning: No forecasts processed successfully, using default RRFS_NA bounds")
+        # RRFS_NA_3km default bounds (approximate full extent after rotation)
         bounds = {
-            'lat_min': NA_BOUNDS['lat_min'],
-            'lat_max': NA_BOUNDS['lat_max'],
-            'lon_min': NA_BOUNDS['lon_min'],
-            'lon_max': NA_BOUNDS['lon_max'],
+            'lat_min': -2.0,
+            'lat_max': 90.0,
+            'lon_min': -180.0,
+            'lon_max': 180.0,
             'projection': 'regular_ll',
             'reprojected': True,
             'source_grid': 'RRFS_NA_3km',

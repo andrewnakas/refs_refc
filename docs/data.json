@@ -10,12 +10,13 @@
   },
   "forecasts": [],
   "bounds": {
-    "lat_min": 15.0,
-    "lat_max": 75.0,
+    "lat_min": -2.0,
+    "lat_max": 90.0,
     "lon_min": -180.0,
-    "lon_max": -40.0,
+    "lon_max": 180.0,
     "projection": "regular_ll",
     "reprojected": true,
-    "note": "RRFS_NA_3km data reprojected from rotated lat-lon grid (south pole: -35.0°N, 247.0°E) to regular geographic grid"
+    "source_grid": "RRFS_NA_3km",
+    "note": "RRFS_NA_3km regridded from rotated lat-lon to regular geographic grid. Bounds determined from actual data extent."
   }
 }
