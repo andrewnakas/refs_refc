@@ -86,15 +86,21 @@ def process_with_pygrib(grib_file: Path) -> dict:
     data = refc.values
     lats, lons = refc.latlons()
 
-    # Get grid info
+    # Get grid info with fallback defaults
+    try:
+        nx = refc.Nx
+        ny = refc.Ny
+    except:
+        ny, nx = data.shape
+
     grid_info = {
-        'nx': refc.Nx,
-        'ny': refc.Ny,
-        'lat_min': float(lats.min()),
-        'lat_max': float(lats.max()),
-        'lon_min': float(lons.min()),
-        'lon_max': float(lons.max()),
-        'projection': refc.projparams if hasattr(refc, 'projparams') else {}
+        'nx': nx,
+        'ny': ny,
+        'lat_min': float(lats.min()) if lats is not None else 20.0,
+        'lat_max': float(lats.max()) if lats is not None else 55.0,
+        'lon_min': float(lons.min()) if lons is not None else -130.0,
+        'lon_max': float(lons.max()) if lons is not None else -60.0,
+        'projection': refc.projparams if hasattr(refc, 'projparams') else 'unknown'
     }
 
     grbs.close()
@@ -123,12 +129,18 @@ def process_with_cfgrib(grib_file: Path) -> dict:
     # Find REFC variable (might be named differently)
     refc_var = None
     for var in ds.data_vars:
-        if 'refc' in var.lower() or 'reflectivity' in str(ds[var].long_name).lower():
+        var_attrs = ds[var].attrs
+        var_name = str(var).lower()
+        var_long_name = str(var_attrs.get('long_name', '')).lower()
+        var_standard_name = str(var_attrs.get('standard_name', '')).lower()
+
+        if 'refc' in var_name or 'reflectivity' in var_long_name or 'reflectivity' in var_standard_name:
             refc_var = var
             break
 
     if refc_var is None:
         # Try to find it by standard name or other attributes
+        print(f"  Warning: Could not identify REFC variable, using first variable")
         refc_var = list(ds.data_vars)[0]  # Take first variable as fallback
 
     data = ds[refc_var].values
@@ -145,11 +157,19 @@ def process_with_cfgrib(grib_file: Path) -> dict:
         lats = ds['y'].values if 'y' in ds.coords else None
         lons = ds['x'].values if 'x' in ds.coords else None
 
+    # Handle 1D vs 2D coordinate arrays
+    if lats is not None and lons is not None:
+        if lats.ndim == 1 and lons.ndim == 1:
+            # 1D arrays - create meshgrid
+            lons_2d, lats_2d = np.meshgrid(lons, lats)
+            lats = lats_2d
+            lons = lons_2d
+
     grid_info = {
-        'lat_min': float(lats.min()) if lats is not None else None,
-        'lat_max': float(lats.max()) if lats is not None else None,
-        'lon_min': float(lons.min()) if lons is not None else None,
-        'lon_max': float(lons.max()) if lons is not None else None,
+        'lat_min': float(lats.min()) if lats is not None else 20.0,
+        'lat_max': float(lats.max()) if lats is not None else 55.0,
+        'lon_min': float(lons.min()) if lons is not None else -130.0,
+        'lon_max': float(lons.max()) if lons is not None else -60.0,
         'projection': ds.attrs.get('GRIB_gridType', 'unknown')
     }
 
@@ -315,12 +335,25 @@ def process_all_gribs():
         if meta:
             forecast_metadata.append(meta)
 
+    # Determine bounds from first successful forecast or use defaults
+    if forecast_metadata:
+        bounds = forecast_metadata[0]['grid']
+    else:
+        print("  Warning: No forecasts processed successfully, using default bounds")
+        bounds = {
+            'lat_min': 20.0,
+            'lat_max': 55.0,
+            'lon_min': -130.0,
+            'lon_max': -60.0,
+            'projection': 'unknown'
+        }
+
     # Create output metadata
     output_meta = {
         'generated': datetime.now(timezone.utc).isoformat(),
         'source': source_meta,
         'forecasts': forecast_metadata,
-        'bounds': forecast_metadata[0]['grid'] if forecast_metadata else None
+        'bounds': bounds
     }
 
     # Save metadata
