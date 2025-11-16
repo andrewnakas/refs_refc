@@ -9,7 +9,8 @@ on:
     paths:
       - 'rrfs_data/**'
       - 'process_grib_for_web.py'
-      - 'docs/index.html'
+      - 'create_static_map.py'
+      - 'docs/**'
       - '.github/workflows/deploy_pages.yml'
 
   # Allow manual triggering
@@ -48,29 +49,42 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeccodes-dev libeccodes-tools
+          sudo apt-get install -y libeccodes-dev libeccodes-tools libgeos-dev libproj-dev
 
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy scipy pillow xarray eccodes cfgrib requests
+          pip install numpy scipy pillow xarray eccodes cfgrib requests matplotlib cartopy
 
-      - name: Make processing script executable
-        run: chmod +x process_grib_for_web.py
-
-      - name: Process GRIB files for web
+      - name: Make processing scripts executable
         run: |
-          python process_grib_for_web.py || echo "Processing completed with warnings"
+          chmod +x process_grib_for_web.py
+          chmod +x create_static_map.py
+
+      - name: Create static maps with Cartopy (proper projection)
+        run: |
+          echo "Generating static maps with correct rotated pole projection..."
+          python create_static_map.py
+
+      - name: Process GRIB files for Leaflet tiles (fallback)
+        run: |
+          echo "Generating Leaflet tiles (legacy approach)..."
+          python process_grib_for_web.py || echo "Tile processing completed with warnings"
 
       - name: List generated files
         run: |
           echo "=== Generated files in docs/ ==="
           ls -lh docs/
           echo ""
-          echo "=== Tiles ==="
+          echo "=== Static Maps (Cartopy) ==="
+          ls -lh docs/maps/ 2>/dev/null || echo "No maps directory"
+          echo ""
+          echo "=== Tiles (Leaflet fallback) ==="
           ls -lh docs/tiles/ 2>/dev/null || echo "No tiles directory"
           echo ""
-          echo "=== Data metadata ==="
+          echo "=== Metadata files ==="
+          cat docs/maps_data.json 2>/dev/null || echo "No maps_data.json"
+          echo ""
           cat docs/data.json 2>/dev/null || echo "No data.json"
 
       - name: Create .nojekyll file

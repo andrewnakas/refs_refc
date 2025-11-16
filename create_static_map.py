@@ -2,13 +2,19 @@
 """
 Create static map visualization of RRFS REFC data using cartopy with proper rotated pole projection.
 Based on NOAA visualization best practices for rotated lat-lon grids.
+
+This generates properly projected static PNG images that can be viewed in a web gallery.
 """
 
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for server
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
+import cartopy.feature as cfeature
 from pathlib import Path
 import json
+from datetime import datetime, timezone
 
 try:
     import pygrib
@@ -24,6 +30,9 @@ except ImportError:
     HAS_CFGRIB = False
 
 
+DATA_DIR = Path("rrfs_data")
+OUTPUT_DIR = Path("docs")
+
 # RRFS_NA_3km rotated pole parameters from UFS SRWeather App
 # The rotated pole is at: -35.0°N, 247.0°E (or -113.0°W)
 RRFS_ROTATED_POLE = {
@@ -31,6 +40,26 @@ RRFS_ROTATED_POLE = {
     'pole_longitude': 247.0,  # Grid south pole longitude (or -113.0°W)
     'central_rotated_longitude': 0.0  # Central meridian in rotated coords
 }
+
+# REFC colormap (radar reflectivity)
+REFC_COLORS = [
+    (0.0, '#00000000'),      # Transparent for no echo
+    (5.0, '#04e9e7'),        # Light blue
+    (10.0, '#019ff4'),       # Blue
+    (15.0, '#0300f4'),       # Dark blue
+    (20.0, '#02fd02'),       # Green
+    (25.0, '#01c501'),       # Dark green
+    (30.0, '#008e00'),       # Forest green
+    (35.0, '#fdf802'),       # Yellow
+    (40.0, '#e5bc00'),       # Gold
+    (45.0, '#fd9500'),       # Orange
+    (50.0, '#fd0000'),       # Red
+    (55.0, '#d40000'),       # Dark red
+    (60.0, '#bc0000'),       # Maroon
+    (65.0, '#f800fd'),       # Magenta
+    (70.0, '#9854c6'),       # Purple
+    (75.0, '#fdfdfd'),       # White
+]
 
 
 def setup_rotated_pole_projection():
@@ -49,7 +78,22 @@ def setup_rotated_pole_projection():
     return rp
 
 
-def create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path):
+def create_refc_colormap():
+    """Create custom radar reflectivity colormap."""
+    from matplotlib.colors import ListedColormap, BoundaryNorm
+
+    # Extract colors and levels
+    levels = [c[0] for c in REFC_COLORS]
+    colors = [c[1] for c in REFC_COLORS]
+
+    # Create colormap and norm
+    cmap = ListedColormap(colors)
+    norm = BoundaryNorm(levels, len(colors))
+
+    return cmap, norm, levels
+
+
+def create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path, forecast_hour=0, cycle_time=None):
     """
     Create map visualization maintaining proper RRFS grid aspect ratio.
 
@@ -58,58 +102,80 @@ def create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path):
         lats: 2D array of latitudes (already in geographic coords)
         lons: 2D array of longitudes (already in geographic coords)
         output_path: Where to save the figure
+        forecast_hour: Forecast hour for title
+        cycle_time: Model cycle time
     """
     # Grid dimensions
     ny, nx = data.shape
     aspect_ratio = nx / ny
 
-    print(f"Grid dimensions: {nx} × {ny}")
-    print(f"Aspect ratio: {aspect_ratio:.2f}")
+    print(f"  Grid dimensions: {nx} × {ny}")
+    print(f"  Aspect ratio: {aspect_ratio:.3f} (should be ~1.65 for RRFS native grid)")
 
-    # Create figure with proper aspect ratio
-    fig_width = 16
+    # Create figure with proper aspect ratio matching the grid
+    # For RRFS native: 4881×2961 = 1.648:1 aspect ratio
+    fig_width = 20
     fig_height = fig_width / aspect_ratio
-    fig = plt.figure(figsize=(fig_width, fig_height), dpi=150)
+    fig = plt.figure(figsize=(fig_width, fig_height), dpi=100)
 
     # Use PlateCarree for display (since cfgrib already transformed coords)
     ax = plt.axes(projection=ccrs.PlateCarree())
+    ax.set_facecolor('#000000')  # Black background
 
     # Determine extent from data
     lon_min, lon_max = np.nanmin(lons), np.nanmax(lons)
     lat_min, lat_max = np.nanmin(lats), np.nanmax(lats)
 
-    print(f"Data extent: lon [{lon_min:.1f}, {lon_max:.1f}], lat [{lat_min:.1f}, {lat_max:.1f}]")
+    print(f"  Data extent: lon [{lon_min:.1f}, {lon_max:.1f}], lat [{lat_min:.1f}, {lat_max:.1f}]")
 
     # Set extent
     ax.set_extent([lon_min, lon_max, lat_min, lat_max], crs=ccrs.PlateCarree())
 
-    # Plot data
-    levels = np.arange(0, 76, 5)  # REFC levels 0-75 dBZ
-    im = ax.contourf(
+    # Create radar colormap
+    cmap, norm, levels = create_refc_colormap()
+
+    # Plot data using pcolormesh for better performance
+    im = ax.pcolormesh(
         lons, lats, data,
-        levels=levels,
-        cmap='pyart_NWSRef',  # Radar reflectivity colormap
+        cmap=cmap,
+        norm=norm,
         transform=ccrs.PlateCarree(),
-        extend='max'
+        shading='nearest',
+        rasterized=True
     )
 
     # Add geographic features
-    ax.coastlines(resolution='50m', linewidth=0.5, color='white', alpha=0.7)
-    ax.gridlines(draw_labels=True, linewidth=0.3, color='white', alpha=0.5)
+    ax.add_feature(cfeature.COASTLINE, linewidth=0.8, edgecolor='white', alpha=0.6)
+    ax.add_feature(cfeature.STATES, linewidth=0.4, edgecolor='white', alpha=0.4)
+    ax.add_feature(cfeature.BORDERS, linewidth=0.6, edgecolor='white', alpha=0.5)
+
+    # Add gridlines
+    gl = ax.gridlines(draw_labels=True, linewidth=0.5, color='white', alpha=0.3, linestyle='--')
+    gl.top_labels = False
+    gl.right_labels = False
 
     # Colorbar
-    cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.05, aspect=40)
-    cbar.set_label('Composite Reflectivity (dBZ)', fontsize=12)
+    cbar = plt.colorbar(im, ax=ax, orientation='horizontal', pad=0.03, aspect=50, shrink=0.8)
+    cbar.set_label('Composite Reflectivity (dBZ)', fontsize=12, color='white')
+    cbar.ax.tick_params(labelsize=10, colors='white')
 
-    # Title
-    ax.set_title('RRFS Composite Reflectivity (REFC) - Native Grid',
-                 fontsize=14, fontweight='bold')
+    # Title with cycle and forecast hour info
+    if cycle_time:
+        title = f'RRFS Composite Reflectivity - Cycle {cycle_time} - F{forecast_hour:03d}'
+    else:
+        title = f'RRFS Composite Reflectivity (REFC) - F{forecast_hour:03d}'
 
-    # Save
-    plt.savefig(output_path, dpi=150, bbox_inches='tight', facecolor='white')
+    ax.set_title(title, fontsize=14, fontweight='bold', color='white', pad=10)
+
+    # Add aspect ratio info as subtle text
+    fig.text(0.99, 0.01, f'Grid: {nx}×{ny} | Aspect: {aspect_ratio:.2f}:1',
+             ha='right', va='bottom', fontsize=8, color='white', alpha=0.5)
+
+    # Save with black background
+    plt.savefig(output_path, dpi=100, bbox_inches='tight', facecolor='black', edgecolor='none')
     plt.close()
 
-    print(f"Saved map to {output_path}")
+    print(f"  Saved: {output_path.name}")
 
 
 def load_grib_data(grib_file):
@@ -142,32 +208,127 @@ def load_grib_data(grib_file):
     return None, None, None
 
 
-def main():
-    """Main entry point."""
-    # Find first GRIB file
-    data_dir = Path('rrfs_data')
-    grib_files = sorted([f for f in data_dir.glob('*.grib2') if '.subh.' not in f.name])
+def process_all_gribs():
+    """Process all GRIB files and create static maps."""
+    # Load metadata
+    metadata_file = DATA_DIR / 'metadata.json'
+    if metadata_file.exists():
+        with open(metadata_file) as f:
+            source_meta = json.load(f)
+            cycle_time = f"{source_meta.get('cycle_date', 'Unknown')} {source_meta.get('cycle_hour', '00')}Z"
+    else:
+        source_meta = {}
+        cycle_time = None
+
+    # Find all GRIB files (non-subhourly)
+    grib_files = sorted([f for f in DATA_DIR.glob('*.grib2') if '.subh.' not in f.name])
 
     if not grib_files:
-        print("No GRIB files found!")
-        return 1
+        print("ERROR: No GRIB files found in rrfs_data/")
+        return None
 
-    grib_file = grib_files[0]
-    print(f"Using: {grib_file.name}")
-
-    # Load data
-    data, lats, lons = load_grib_data(grib_file)
-    if data is None:
-        print("Failed to load GRIB data!")
-        return 1
+    print(f"Found {len(grib_files)} GRIB files to process\n")
 
     # Create output directory
-    output_dir = Path('docs/static_maps')
-    output_dir.mkdir(exist_ok=True, parents=True)
+    maps_dir = OUTPUT_DIR / 'maps'
+    maps_dir.mkdir(exist_ok=True, parents=True)
 
-    # Create map
-    output_path = output_dir / 'rrfs_refc_native_grid.png'
-    create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path)
+    # Process each file
+    forecast_maps = []
+    for grib_file in grib_files:
+        # Extract forecast hour from filename
+        try:
+            fhour_str = grib_file.name.split('.f')[1].split('.')[0]
+            fhour = int(fhour_str)
+        except (IndexError, ValueError):
+            print(f"  Could not parse forecast hour from {grib_file.name}")
+            continue
+
+        print(f"Processing F{fhour:03d}: {grib_file.name}")
+
+        # Load data
+        data, lats, lons = load_grib_data(grib_file)
+        if data is None:
+            print(f"  Failed to load {grib_file.name}")
+            continue
+
+        # Create map
+        output_path = maps_dir / f'rrfs_refc_f{fhour:03d}.png'
+        create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path, fhour, cycle_time)
+
+        # Get bounds
+        lon_min, lon_max = float(np.nanmin(lons)), float(np.nanmax(lons))
+        lat_min, lat_max = float(np.nanmin(lats)), float(np.nanmax(lats))
+        ny, nx = data.shape
+
+        forecast_maps.append({
+            'forecast_hour': fhour,
+            'image': f'maps/rrfs_refc_f{fhour:03d}.png',
+            'grid': {
+                'dimensions': [nx, ny],
+                'aspect_ratio': round(nx / ny, 3),
+                'lat_min': lat_min,
+                'lat_max': lat_max,
+                'lon_min': lon_min,
+                'lon_max': lon_max,
+            }
+        })
+
+    if not forecast_maps:
+        print("\nERROR: No forecasts were successfully processed!")
+        return None
+
+    # Create output metadata
+    output_meta = {
+        'generated': datetime.now(timezone.utc).isoformat(),
+        'source': source_meta,
+        'forecasts': forecast_maps,
+        'grid_info': {
+            'projection': 'rotated_latlon',
+            'native_dimensions': [4881, 2961],
+            'native_aspect_ratio': 1.648,
+            'pole_latitude': RRFS_ROTATED_POLE['pole_latitude'],
+            'pole_longitude': RRFS_ROTATED_POLE['pole_longitude'],
+        }
+    }
+
+    # Save metadata
+    meta_path = OUTPUT_DIR / 'maps_data.json'
+    with open(meta_path, 'w') as f:
+        json.dump(output_meta, f, indent=2)
+
+    print(f"\n{'='*60}")
+    print(f"Processing complete!")
+    print(f"  Maps created: {len(forecast_maps)}")
+    print(f"  Output directory: {maps_dir.absolute()}")
+    print(f"  Metadata: {meta_path.name}")
+    print(f"{'='*60}")
+
+    return output_meta
+
+
+def main():
+    """Main entry point."""
+    print("=" * 60)
+    print("RRFS REFC Static Map Generator (Cartopy)")
+    print("=" * 60)
+    print()
+
+    # Check for GRIB libraries
+    if not HAS_PYGRIB and not HAS_CFGRIB:
+        print("ERROR: No GRIB library available!")
+        print("Please install either:")
+        print("  - pygrib: pip install pygrib")
+        print("  - cfgrib: pip install cfgrib xarray")
+        return 1
+
+    print(f"Using: {'pygrib' if HAS_PYGRIB else 'cfgrib'}")
+    print()
+
+    result = process_all_gribs()
+
+    if result is None:
+        return 1
 
     return 0
 

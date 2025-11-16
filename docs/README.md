@@ -2,11 +2,21 @@
 
 This directory contains the web visualization for RRFS Composite Reflectivity (REFC) forecast data.
 
-## Contents
+## Two Visualization Approaches
 
-- **index.html** - Interactive Leaflet map showing animated radar reflectivity forecasts
-- **tiles/** - PNG tiles of REFC data for each forecast hour
-- **data.json** - Metadata about forecast data and tile locations
+### 1. Static Maps with Proper Projection (Default) ⭐
+- **File**: `index.html` - Gallery viewer with animation controls
+- **Maps**: `maps/` - Cartopy-generated PNGs with correct rotated pole projection
+- **Metadata**: `maps_data.json` - Grid info and forecast metadata
+- **Projection**: Native rotated lat-lon (4881×2961, aspect 1.65:1)
+- **Why**: Mathematically correct representation of RRFS native grid
+
+### 2. Interactive Leaflet Map (Legacy)
+- **File**: `index_leaflet.html` - Interactive pan/zoom map
+- **Tiles**: `tiles/` - PNG tiles regridded to PlateCarree
+- **Metadata**: `data.json` - Tile locations and bounds
+- **Projection**: Regridded to regular lat-lon for Web Mercator compatibility
+- **Note**: Cannot display native rotated pole projection (Leaflet limitation)
 
 ## Live Visualization
 

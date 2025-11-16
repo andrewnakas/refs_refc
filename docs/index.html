@@ -3,10 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RRFS Composite Reflectivity (REFC) - Live Radar Forecast</title>
-
-    <!-- Leaflet CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>RRFS Composite Reflectivity - Static Map Viewer</title>
 
     <style>
         * {
@@ -17,77 +14,182 @@
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: #1a1a1a;
+            background: #0a0a0a;
             color: #ffffff;
+            overflow: hidden;
         }
 
-        #map {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 80px;
-            width: 100%;
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
         }
 
-        .info-panel {
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .header .subtitle {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .map-viewer {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+            position: relative;
+            overflow: hidden;
+        }
+
+        #mapImage {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .loading {
             position: absolute;
-            top: 10px;
-            right: 10px;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 3px solid #4fc3f7;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .info-overlay {
+            position: absolute;
+            top: 15px;
+            right: 15px;
             background: rgba(0, 0, 0, 0.8);
-            padding: 15px;
+            padding: 15px 20px;
             border-radius: 8px;
-            z-index: 1000;
-            min-width: 250px;
             backdrop-filter: blur(10px);
+            min-width: 200px;
         }
 
-        .info-panel h2 {
-            font-size: 16px;
-            margin-bottom: 10px;
+        .info-overlay h3 {
+            font-size: 14px;
             color: #4fc3f7;
+            margin-bottom: 8px;
         }
 
-        .info-panel p {
-            font-size: 13px;
+        .info-item {
+            font-size: 12px;
             margin: 5px 0;
-            color: #e0e0e0;
-        }
-
-        .info-panel .label {
-            color: #9e9e9e;
-            font-size: 11px;
+            opacity: 0.9;
         }
 
         .controls {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 80px;
-            background: rgba(0, 0, 0, 0.9);
-            padding: 15px 20px;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
+            background: #1a1a1a;
+            padding: 20px;
+            border-top: 1px solid #333;
         }
 
-        .timeline {
+        .control-group {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .playback-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn {
+            background: #2a5298;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: #3a6ac0;
+            transform: translateY(-1px);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            background: #333;
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        .btn-play {
+            background: #4caf50;
+            min-width: 100px;
+        }
+
+        .btn-play:hover {
+            background: #5cbd60;
+        }
+
+        .btn-play.playing {
+            background: #f44336;
+        }
+
+        .btn-play.playing:hover {
+            background: #e53935;
+        }
+
+        .slider-container {
             display: flex;
             align-items: center;
             gap: 15px;
-            margin-bottom: 10px;
         }
 
-        #timeline-slider {
+        .slider-label {
+            font-size: 13px;
+            font-weight: 500;
+            min-width: 120px;
+        }
+
+        #frameSlider {
             flex: 1;
             height: 6px;
             border-radius: 3px;
-            background: #424242;
+            background: #333;
             outline: none;
             -webkit-appearance: none;
         }
 
-        #timeline-slider::-webkit-slider-thumb {
+        #frameSlider::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
             width: 18px;
@@ -97,7 +199,7 @@
             cursor: pointer;
         }
 
-        #timeline-slider::-moz-range-thumb {
+        #frameSlider::-moz-range-thumb {
             width: 18px;
             height: 18px;
             border-radius: 50%;
@@ -106,372 +208,230 @@
             border: none;
         }
 
-        .button-group {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-        }
-
-        button {
-            background: #424242;
-            border: none;
-            color: white;
-            padding: 8px 16px;
-            border-radius: 5px;
-            cursor: pointer;
+        .frame-info {
             font-size: 14px;
-            transition: background 0.2s;
+            font-weight: 600;
+            color: #4fc3f7;
+            min-width: 80px;
+            text-align: center;
         }
 
-        button:hover {
-            background: #616161;
+        .speed-control {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+            justify-content: center;
         }
 
-        button.active {
+        .speed-control label {
+            font-size: 13px;
+        }
+
+        .speed-btn {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .speed-btn.active {
             background: #4fc3f7;
         }
 
-        #forecast-time {
-            font-size: 14px;
-            font-weight: bold;
-            min-width: 120px;
-            color: #4fc3f7;
-        }
-
-        .legend {
-            position: absolute;
-            bottom: 90px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 10px;
-            border-radius: 8px;
-            z-index: 1000;
-            backdrop-filter: blur(10px);
-        }
-
-        .legend h3 {
-            font-size: 12px;
-            margin-bottom: 8px;
-            color: #9e9e9e;
-        }
-
-        .legend-scale {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .legend-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-        }
-
-        .legend-color {
-            width: 30px;
-            height: 15px;
-            border: 1px solid #555;
-        }
-
-        .loading {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 18px;
-            color: #4fc3f7;
-            z-index: 2000;
-        }
-
         .error {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(211, 47, 47, 0.9);
+            color: #f44336;
             padding: 20px;
-            border-radius: 8px;
-            z-index: 2000;
-            max-width: 400px;
+            text-align: center;
         }
     </style>
 </head>
 <body>
-    <div id="loading" class="loading">Loading RRFS REFC data...</div>
-    <div id="error" class="error" style="display: none;"></div>
+    <div class="container">
+        <div class="header">
+            <h1>RRFS Composite Reflectivity Forecast</h1>
+            <div class="subtitle" id="cycleInfo">Loading...</div>
+        </div>
 
-    <div id="map"></div>
+        <div class="map-viewer">
+            <div class="loading" id="loading">
+                <div class="spinner"></div>
+                <div>Loading forecast data...</div>
+            </div>
 
-    <div class="info-panel">
-        <h2>RRFS Composite Reflectivity</h2>
-        <p class="label">CYCLE</p>
-        <p id="cycle-info">Loading...</p>
-        <p class="label">VALID TIME</p>
-        <p id="valid-time">--</p>
-        <p class="label">DATA RANGE</p>
-        <p id="data-range">--</p>
-    </div>
+            <img id="mapImage" style="display: none;" alt="RRFS Reflectivity Map">
 
-    <div class="legend">
-        <h3>REFLECTIVITY (dBZ)</h3>
-        <div class="legend-scale">
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(150,150,150);"></div>
-                <span>70+</span>
+            <div class="info-overlay" id="infoOverlay" style="display: none;">
+                <h3>Grid Information</h3>
+                <div class="info-item">Dimensions: <span id="gridDims">-</span></div>
+                <div class="info-item">Aspect Ratio: <span id="gridAspect">-</span>:1</div>
+                <div class="info-item">Projection: Rotated Lat-Lon</div>
+                <div class="info-item">Pole: <span id="poleInfo">-</span></div>
             </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(248,0,253);"></div>
-                <span>45-70</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(212,0,0);"></div>
-                <span>30-45</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(253,139,0);"></div>
-                <span>20-30</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(253,248,2);"></div>
-                <span>15-20</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(2,253,2);"></div>
-                <span>5-15</span>
-            </div>
-            <div class="legend-item">
-                <div class="legend-color" style="background: rgb(1,159,244);"></div>
-                <span>0-5</span>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <div class="playback-controls">
+                    <button class="btn" id="prevBtn">◀ Previous</button>
+                    <button class="btn btn-play" id="playBtn">▶ Play</button>
+                    <button class="btn" id="nextBtn">Next ▶</button>
+                </div>
+
+                <div class="slider-container">
+                    <span class="slider-label">Forecast Hour:</span>
+                    <input type="range" id="frameSlider" min="0" max="0" value="0" step="1">
+                    <span class="frame-info" id="frameInfo">F000</span>
+                </div>
+
+                <div class="speed-control">
+                    <label>Animation Speed:</label>
+                    <button class="btn speed-btn" data-speed="2000">0.5x</button>
+                    <button class="btn speed-btn active" data-speed="1000">1x</button>
+                    <button class="btn speed-btn" data-speed="500">2x</button>
+                    <button class="btn speed-btn" data-speed="250">4x</button>
+                </div>
             </div>
         </div>
     </div>
-
-    <div class="controls">
-        <div class="timeline">
-            <span id="forecast-time">F000 (+0h)</span>
-            <input type="range" id="timeline-slider" min="0" max="0" value="0" step="1">
-        </div>
-        <div class="button-group">
-            <button id="play-pause">▶ Play</button>
-            <button id="prev-frame">◀ Prev</button>
-            <button id="next-frame">Next ▶</button>
-            <span style="color: #9e9e9e; font-size: 12px; margin-left: auto;" id="update-info"></span>
-        </div>
-    </div>
-
-    <!-- Leaflet JS -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // Configuration
-        // RRFS_NA_3km grid center is at 55.0°N, -112.5°W
-        const DEFAULT_CENTER = [45.0, -100.0]; // Center on North America (RRFS_NA domain)
-        const DEFAULT_ZOOM = 3;
-        let map, imageOverlay;
         let forecastData = null;
         let currentFrame = 0;
         let isPlaying = false;
-        let animationInterval = null;
+        let playInterval = null;
+        let animationSpeed = 1000; // milliseconds per frame
 
-        // Initialize map
-        function initMap() {
-            map = L.map('map', {
-                center: DEFAULT_CENTER,
-                zoom: DEFAULT_ZOOM,
-                zoomControl: true
-            });
-
-            // Add base layer
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-                subdomains: 'abcd',
-                maxZoom: 20
-            }).addTo(map);
-        }
+        // DOM elements
+        const mapImage = document.getElementById('mapImage');
+        const loading = document.getElementById('loading');
+        const frameSlider = document.getElementById('frameSlider');
+        const frameInfo = document.getElementById('frameInfo');
+        const playBtn = document.getElementById('playBtn');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const cycleInfo = document.getElementById('cycleInfo');
+        const infoOverlay = document.getElementById('infoOverlay');
 
         // Load forecast data
-        async function loadForecastData() {
+        async function loadData() {
             try {
-                const response = await fetch('data.json');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
+                const response = await fetch('maps_data.json');
+                if (!response.ok) throw new Error('Failed to load data');
 
-                if (!data.forecasts || data.forecasts.length === 0) {
+                forecastData = await response.json();
+
+                if (!forecastData.forecasts || forecastData.forecasts.length === 0) {
                     throw new Error('No forecast data available');
                 }
 
-                return data;
+                initializeViewer();
             } catch (error) {
-                console.error('Error loading forecast data:', error);
-                throw error;
+                loading.innerHTML = `<div class="error">Error: ${error.message}</div>`;
+                console.error('Error loading data:', error);
             }
         }
 
-        // Update map with forecast frame
-        function updateFrame(frameIndex) {
-            if (!forecastData || !forecastData.forecasts[frameIndex]) {
-                return;
+        function initializeViewer() {
+            // Update cycle info
+            const source = forecastData.source;
+            if (source.cycle_date && source.cycle_hour) {
+                const date = source.cycle_date;
+                const hour = source.cycle_hour;
+                cycleInfo.textContent = `Model Cycle: ${date} ${hour}Z | Generated: ${new Date(forecastData.generated).toLocaleString()}`;
             }
 
-            currentFrame = frameIndex;
-            const forecast = forecastData.forecasts[frameIndex];
-
-            // Remove existing overlay
-            if (imageOverlay) {
-                map.removeLayer(imageOverlay);
+            // Update grid info
+            const gridInfo = forecastData.grid_info;
+            if (gridInfo) {
+                document.getElementById('gridDims').textContent = `${gridInfo.native_dimensions[0]} × ${gridInfo.native_dimensions[1]}`;
+                document.getElementById('gridAspect').textContent = gridInfo.native_aspect_ratio;
+                document.getElementById('poleInfo').textContent = `${gridInfo.pole_latitude}°N, ${gridInfo.pole_longitude}°E`;
             }
 
-            // Get bounds (using default North America bounds if not available)
-            const bounds = forecastData.bounds || {};
-            const latMin = bounds.lat_min || 20.0;
-            const latMax = bounds.lat_max || 55.0;
-            const lonMin = bounds.lon_min || -130.0;
-            const lonMax = bounds.lon_max || -60.0;
+            // Setup slider
+            frameSlider.max = forecastData.forecasts.length - 1;
+            frameSlider.value = 0;
 
-            // Add new overlay
-            imageOverlay = L.imageOverlay(
-                forecast.tile,
-                [[latMin, lonMin], [latMax, lonMax]],
-                {
-                    opacity: 0.7,
-                    interactive: false
-                }
-            ).addTo(map);
+            // Show controls
+            loading.style.display = 'none';
+            mapImage.style.display = 'block';
+            infoOverlay.style.display = 'block';
 
-            // Update UI
-            document.getElementById('timeline-slider').value = frameIndex;
-            document.getElementById('forecast-time').textContent =
-                `F${String(forecast.forecast_hour).padStart(3, '0')} (+${forecast.forecast_hour}h)`;
+            // Load first frame
+            updateFrame(0);
 
-            // Update valid time
-            if (forecastData.source && forecastData.source.cycle_date && forecastData.source.cycle_hour) {
-                const cycleDate = forecastData.source.cycle_date;
-                const cycleHour = forecastData.source.cycle_hour;
-                const validDate = new Date(
-                    cycleDate.substring(0, 4),
-                    parseInt(cycleDate.substring(4, 6)) - 1,
-                    cycleDate.substring(6, 8),
-                    parseInt(cycleHour) + forecast.forecast_hour,
-                    0
-                );
-                document.getElementById('valid-time').textContent =
-                    validDate.toUTCString().replace('GMT', 'UTC');
-            }
+            // Setup event listeners
+            frameSlider.addEventListener('input', (e) => {
+                updateFrame(parseInt(e.target.value));
+            });
 
-            // Update data range
-            if (forecast.stats) {
-                document.getElementById('data-range').textContent =
-                    `${forecast.stats.min.toFixed(1)} to ${forecast.stats.max.toFixed(1)} dBZ`;
-            }
-        }
+            playBtn.addEventListener('click', togglePlay);
+            prevBtn.addEventListener('click', () => updateFrame(currentFrame - 1));
+            nextBtn.addEventListener('click', () => updateFrame(currentFrame + 1));
 
-        // Animation controls
-        function togglePlayPause() {
-            if (isPlaying) {
-                stopAnimation();
-            } else {
-                startAnimation();
-            }
-        }
-
-        function startAnimation() {
-            isPlaying = true;
-            document.getElementById('play-pause').textContent = '⏸ Pause';
-            document.getElementById('play-pause').classList.add('active');
-
-            animationInterval = setInterval(() => {
-                currentFrame = (currentFrame + 1) % forecastData.forecasts.length;
-                updateFrame(currentFrame);
-            }, 500); // 500ms per frame
-        }
-
-        function stopAnimation() {
-            isPlaying = false;
-            document.getElementById('play-pause').textContent = '▶ Play';
-            document.getElementById('play-pause').classList.remove('active');
-
-            if (animationInterval) {
-                clearInterval(animationInterval);
-                animationInterval = null;
-            }
-        }
-
-        function nextFrame() {
-            stopAnimation();
-            currentFrame = (currentFrame + 1) % forecastData.forecasts.length;
-            updateFrame(currentFrame);
-        }
-
-        function prevFrame() {
-            stopAnimation();
-            currentFrame = (currentFrame - 1 + forecastData.forecasts.length) % forecastData.forecasts.length;
-            updateFrame(currentFrame);
-        }
-
-        // Initialize application
-        async function init() {
-            try {
-                document.getElementById('loading').style.display = 'block';
-
-                // Initialize map
-                initMap();
-
-                // Load data
-                forecastData = await loadForecastData();
-
-                // Update cycle info
-                if (forecastData.source) {
-                    const cycleDate = forecastData.source.cycle_date;
-                    const cycleHour = forecastData.source.cycle_hour;
-                    document.getElementById('cycle-info').textContent =
-                        `${cycleDate.substring(0, 4)}-${cycleDate.substring(4, 6)}-${cycleDate.substring(6, 8)} ${cycleHour}:00 UTC`;
-                }
-
-                // Update info
-                if (forecastData.generated) {
-                    const genDate = new Date(forecastData.generated);
-                    document.getElementById('update-info').textContent =
-                        `Updated: ${genDate.toUTCString().replace('GMT', 'UTC')}`;
-                }
-
-                // Setup timeline
-                const slider = document.getElementById('timeline-slider');
-                slider.max = forecastData.forecasts.length - 1;
-                slider.addEventListener('input', (e) => {
-                    stopAnimation();
-                    updateFrame(parseInt(e.target.value));
+            document.querySelectorAll('.speed-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.speed-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    animationSpeed = parseInt(e.target.dataset.speed);
+                    if (isPlaying) {
+                        stopPlay();
+                        startPlay();
+                    }
                 });
+            });
+        }
 
-                // Setup controls
-                document.getElementById('play-pause').addEventListener('click', togglePlayPause);
-                document.getElementById('next-frame').addEventListener('click', nextFrame);
-                document.getElementById('prev-frame').addEventListener('click', prevFrame);
+        function updateFrame(index) {
+            // Wrap around
+            if (index < 0) index = forecastData.forecasts.length - 1;
+            if (index >= forecastData.forecasts.length) index = 0;
 
-                // Show first frame
-                updateFrame(0);
+            currentFrame = index;
+            const forecast = forecastData.forecasts[index];
 
-                // Hide loading
-                document.getElementById('loading').style.display = 'none';
+            // Update image
+            mapImage.src = forecast.image;
 
-            } catch (error) {
-                console.error('Initialization error:', error);
-                document.getElementById('loading').style.display = 'none';
-                const errorDiv = document.getElementById('error');
-                errorDiv.textContent = `Error loading data: ${error.message}`;
-                errorDiv.style.display = 'block';
+            // Update slider and info
+            frameSlider.value = index;
+            frameInfo.textContent = `F${String(forecast.forecast_hour).padStart(3, '0')}`;
+
+            // Update buttons
+            prevBtn.disabled = false;
+            nextBtn.disabled = false;
+        }
+
+        function togglePlay() {
+            if (isPlaying) {
+                stopPlay();
+            } else {
+                startPlay();
             }
         }
 
-        // Start when page loads
-        window.addEventListener('load', init);
+        function startPlay() {
+            isPlaying = true;
+            playBtn.textContent = '⏸ Pause';
+            playBtn.classList.add('playing');
 
-        // Cleanup on page unload
-        window.addEventListener('beforeunload', () => {
-            stopAnimation();
-        });
+            playInterval = setInterval(() => {
+                updateFrame(currentFrame + 1);
+            }, animationSpeed);
+        }
+
+        function stopPlay() {
+            isPlaying = false;
+            playBtn.textContent = '▶ Play';
+            playBtn.classList.remove('playing');
+
+            if (playInterval) {
+                clearInterval(playInterval);
+                playInterval = null;
+            }
+        }
+
+        // Load data on page load
+        loadData();
     </script>
 </body>
 </html>
