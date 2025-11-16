@@ -180,7 +180,16 @@ def create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path, forecast_ho
 
 def load_grib_data(grib_file):
     """Load GRIB file and return data, lats, lons."""
-    print(f"Loading {grib_file}...")
+
+    # Check if file is a Git LFS pointer (should be >1KB for real GRIB file)
+    file_size = grib_file.stat().st_size
+    if file_size < 1024:
+        print(f"  ERROR: File is only {file_size} bytes - likely a Git LFS pointer!")
+        print(f"  Git LFS files were not downloaded properly.")
+        print(f"  Make sure 'git lfs install' and 'git lfs pull' were run successfully.")
+        return None, None, None
+
+    print(f"  Loading {grib_file.name} ({file_size / 1024 / 1024:.2f} MB)...")
 
     if HAS_CFGRIB:
         try:

@@ -34,12 +34,8 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          lfs: true
+          lfs: false  # Don't auto-pull, we'll do it manually after installing git-lfs
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Checkout LFS files
-        run: |
-          git lfs pull
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -49,7 +45,16 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libeccodes-dev libeccodes-tools libgeos-dev libproj-dev
+          sudo apt-get install -y git-lfs libeccodes-dev libeccodes-tools libgeos-dev libproj-dev
+
+      - name: Setup and pull Git LFS
+        run: |
+          git lfs install
+          echo "Pulling Git LFS files..."
+          git lfs pull
+          echo ""
+          echo "Verifying LFS files were downloaded:"
+          ls -lh rrfs_data/*.grib2 | head -5
 
       - name: Install Python dependencies
         run: |
