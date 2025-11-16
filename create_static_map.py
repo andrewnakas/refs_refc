@@ -193,14 +193,45 @@ def load_grib_data(grib_file):
 
     if HAS_CFGRIB:
         try:
-            ds = xr.open_dataset(grib_file, engine='cfgrib')
+            # Try opening with cfgrib - may need backend_kwargs for complex GRIB files
+            print(f"  Attempting to open with cfgrib...")
 
-            print(f"  Available variables: {list(ds.data_vars)}")
+            # First try: open without filtering
+            try:
+                ds = xr.open_dataset(grib_file, engine='cfgrib')
+                print(f"  Successfully opened GRIB file")
+                print(f"  Available variables: {list(ds.data_vars)}")
+            except Exception as e1:
+                print(f"  First attempt failed: {e1}")
+                print(f"  Trying with backend_kwargs...")
+
+                # Second try: open with filter_by_keys to handle specific messages
+                try:
+                    ds = xr.open_dataset(
+                        grib_file,
+                        engine='cfgrib',
+                        backend_kwargs={'filter_by_keys': {'parameterName': 'Maximum/Composite radar reflectivity'}}
+                    )
+                    print(f"  Successfully opened with filter_by_keys")
+                except Exception as e2:
+                    print(f"  Second attempt failed: {e2}")
+
+                    # Third try: open with errors='ignore'
+                    try:
+                        ds = xr.open_dataset(
+                            grib_file,
+                            engine='cfgrib',
+                            backend_kwargs={'errors': 'ignore'}
+                        )
+                        print(f"  Successfully opened with errors='ignore'")
+                    except Exception as e3:
+                        print(f"  Third attempt failed: {e3}")
+                        raise ValueError("All cfgrib opening attempts failed") from e3
 
             # Get REFC variable (composite reflectivity)
             # Try different possible names
             refc_var = None
-            for var_name in ['refc', 'REFC', 'unknown', 'maxrefc', 'composite_reflectivity']:
+            for var_name in ['refc', 'REFC', 'unknown', 'maxrefc', 'composite_reflectivity', 'r']:
                 if var_name in ds:
                     refc_var = var_name
                     break
@@ -210,10 +241,12 @@ def load_grib_data(grib_file):
                 lats = ds['latitude'].values
                 lons = ds['longitude'].values
                 print(f"  Successfully loaded '{refc_var}' from GRIB file")
+                ds.close()
                 return data, lats, lons
             else:
                 print(f"  WARNING: REFC variable not found in GRIB file")
                 print(f"  Available variables: {list(ds.data_vars)}")
+                ds.close()
         except Exception as e:
             print(f"  cfgrib error: {e}")
             import traceback
