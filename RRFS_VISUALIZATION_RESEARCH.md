@@ -1,5 +1,17 @@
 # RRFS Visualization Research - NOAA Developer Approaches
 
+## Testing Status
+
+**Latest Update**: Implemented robust GRIB reading with multiple fallback strategies based on Herbie/NOAA best practices.
+
+**Current Test**: Workflow triggered to verify:
+- cfgrib can open byte-range extracted REFC files
+- Multiple opening strategies work with rotated_ll grid
+- Static maps generate with correct 1.65:1 aspect ratio
+- Visualization deploys to GitHub Pages
+
+---
+
 ## Researchers from the PDF
 
 From the NOAA UIFCW 2023 presentation:
