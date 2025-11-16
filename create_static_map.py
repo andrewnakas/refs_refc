@@ -134,14 +134,16 @@ def create_rrfs_map_with_aspect_ratio(data, lats, lons, output_path, forecast_ho
     # Create radar colormap
     cmap, norm, levels = create_refc_colormap()
 
-    # Plot data using pcolormesh for better performance
-    im = ax.pcolormesh(
+    # Plot data using contourf instead of pcolormesh to avoid horizontal lines
+    # contourf handles irregular grids better than pcolormesh
+    levels_plot = np.arange(0, 76, 1)  # Fine-grained levels for smooth rendering
+    im = ax.contourf(
         lons, lats, data,
+        levels=levels_plot,
         cmap=cmap,
         norm=norm,
         transform=ccrs.PlateCarree(),
-        shading='nearest',
-        rasterized=True
+        extend='max'
     )
 
     # Add geographic features
