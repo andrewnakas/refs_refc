@@ -93,15 +93,25 @@ def process_with_pygrib(grib_file: Path) -> dict:
     except:
         ny, nx = data.shape
 
+    # Get actual geographic bounds
+    lat_min = float(np.nanmin(lats)) if lats is not None else 20.0
+    lat_max = float(np.nanmax(lats)) if lats is not None else 55.0
+    lon_min = float(np.nanmin(lons)) if lons is not None else -130.0
+    lon_max = float(np.nanmax(lons)) if lons is not None else -60.0
+
     grid_info = {
         'nx': nx,
         'ny': ny,
-        'lat_min': float(lats.min()) if lats is not None else 20.0,
-        'lat_max': float(lats.max()) if lats is not None else 55.0,
-        'lon_min': float(lons.min()) if lons is not None else -130.0,
-        'lon_max': float(lons.max()) if lons is not None else -60.0,
-        'projection': refc.projparams if hasattr(refc, 'projparams') else 'unknown'
+        'lat_min': lat_min,
+        'lat_max': lat_max,
+        'lon_min': lon_min,
+        'lon_max': lon_max,
+        'projection': refc.projparams if hasattr(refc, 'projparams') else 'unknown',
+        'grid_spacing': getattr(refc, 'iDirectionIncrementInDegrees', 0.025)
     }
+
+    print(f"  Grid bounds: lat=[{lat_min:.2f}, {lat_max:.2f}], lon=[{lon_min:.2f}, {lon_max:.2f}]")
+    print(f"  Grid type: {grid_info.get('projection', 'unknown')}, Size: {nx}x{ny}")
 
     grbs.close()
 
@@ -165,13 +175,30 @@ def process_with_cfgrib(grib_file: Path) -> dict:
             lats = lats_2d
             lons = lons_2d
 
+    # Get actual geographic bounds from the data
+    # Use nanmin/nanmax to handle any missing values
+    lat_min = float(np.nanmin(lats)) if lats is not None else 20.0
+    lat_max = float(np.nanmax(lats)) if lats is not None else 55.0
+    lon_min = float(np.nanmin(lons)) if lons is not None else -130.0
+    lon_max = float(np.nanmax(lons)) if lons is not None else -60.0
+
+    # Get grid metadata
+    grid_type = ds.attrs.get('GRIB_gridType', 'unknown')
+    var_attrs = ds[refc_var].attrs
+
     grid_info = {
-        'lat_min': float(lats.min()) if lats is not None else 20.0,
-        'lat_max': float(lats.max()) if lats is not None else 55.0,
-        'lon_min': float(lons.min()) if lons is not None else -130.0,
-        'lon_max': float(lons.max()) if lons is not None else -60.0,
-        'projection': ds.attrs.get('GRIB_gridType', 'unknown')
+        'lat_min': lat_min,
+        'lat_max': lat_max,
+        'lon_min': lon_min,
+        'lon_max': lon_max,
+        'projection': grid_type,
+        'nx': var_attrs.get('GRIB_Nx', data.shape[1] if data.ndim == 2 else 0),
+        'ny': var_attrs.get('GRIB_Ny', data.shape[0] if data.ndim == 2 else 0),
+        'grid_spacing': var_attrs.get('GRIB_iDirectionIncrementInDegrees', 0.025)
     }
+
+    print(f"  Grid bounds: lat=[{lat_min:.2f}, {lat_max:.2f}], lon=[{lon_min:.2f}, {lon_max:.2f}]")
+    print(f"  Grid type: {grid_type}, Size: {grid_info['nx']}x{grid_info['ny']}")
 
     ds.close()
 
@@ -335,17 +362,18 @@ def process_all_gribs():
         if meta:
             forecast_metadata.append(meta)
 
-    # Determine bounds from first successful forecast or use defaults
+    # Determine bounds from first successful forecast or use RRFS NA defaults
     if forecast_metadata:
         bounds = forecast_metadata[0]['grid']
     else:
-        print("  Warning: No forecasts processed successfully, using default bounds")
+        print("  Warning: No forecasts processed successfully, using RRFS NA default bounds")
+        # RRFS NA domain actual bounds (rotated lat-lon grid)
         bounds = {
-            'lat_min': 20.0,
-            'lat_max': 55.0,
-            'lon_min': -130.0,
-            'lon_max': -60.0,
-            'projection': 'unknown'
+            'lat_min': -1.61,
+            'lat_max': 90.0,
+            'lon_min': -180.0,
+            'lon_max': 180.0,
+            'projection': 'rotated_ll'
         }
 
     # Create output metadata
