@@ -282,57 +282,62 @@ def data_to_rgba(data: np.ndarray) -> np.ndarray:
 
 
 def reproject_to_regular_grid(data: np.ndarray, lats: np.ndarray, lons: np.ndarray,
-                              output_resolution: float = 0.05) -> tuple:
+                              output_resolution: float = 0.05,
+                              focus_region: dict = None) -> tuple:
     """
     Reproject data from rotated/irregular grid to regular geographic lat-lon grid.
 
     The GRIB lat/lon arrays are already in geographic coordinates (rotation has been applied).
-    We just need to interpolate from the irregular grid to a regular grid.
+    We interpolate from the curvilinear grid to a regular grid focused on North America.
 
     Args:
         data: 2D array of data values
         lats: 2D array of latitudes for each data point (already in geographic coords)
         lons: 2D array of longitudes for each data point (already in geographic coords)
         output_resolution: Resolution of output grid in degrees
+        focus_region: Dict with lat_min, lat_max, lon_min, lon_max to focus output
 
     Returns:
         Tuple of (regridded_data, output_lats, output_lons)
     """
-    print(f"  Regridding from irregular to regular geographic grid...")
+    print(f"  Regridding from curvilinear to regular geographic grid...")
 
     # Flatten the arrays for griddata
     points = np.column_stack((lons.flatten(), lats.flatten()))
     values = data.flatten()
 
-    # Remove any NaN or invalid points (but keep ALL valid data - don't filter by bounds yet)
+    # Remove NaN or invalid points
     valid_mask = ~(np.isnan(values) | np.isnan(points[:, 0]) | np.isnan(points[:, 1]))
     points = points[valid_mask]
     values = values[valid_mask]
 
-    # Determine actual data extent
-    actual_lat_min = float(points[:, 1].min())
-    actual_lat_max = float(points[:, 1].max())
-    actual_lon_min = float(points[:, 0].min())
-    actual_lon_max = float(points[:, 0].max())
+    # Use focus region if provided, otherwise use full data extent
+    if focus_region:
+        lat_min = focus_region['lat_min']
+        lat_max = focus_region['lat_max']
+        lon_min = focus_region['lon_min']
+        lon_max = focus_region['lon_max']
+        print(f"  Using focus region: lat [{lat_min:.1f}, {lat_max:.1f}], lon [{lon_min:.1f}, {lon_max:.1f}]")
+    else:
+        # Determine extent from corner coordinates (not all data points to avoid -180/180 wraparound)
+        lat_min = max(float(lats.min()) - 1, -90)
+        lat_max = min(float(lats.max()) + 1, 90)
+        # For longitude, use corners to avoid -180/180 issue
+        lon_corners = [lons[0,0], lons[0,-1], lons[-1,0], lons[-1,-1]]
+        lon_min = max(min(lon_corners) - 1, -180)
+        lon_max = min(max(lon_corners) + 1, 180)
+        print(f"  Computed extent: lat [{lat_min:.1f}, {lat_max:.1f}], lon [{lon_min:.1f}, {lon_max:.1f}]")
 
-    print(f"  Actual data extent: lat [{actual_lat_min:.2f}, {actual_lat_max:.2f}], lon [{actual_lon_min:.2f}, {actual_lon_max:.2f}]")
-
-    # Create regular output grid that covers the actual data extent
-    # Add small buffer to ensure we capture edge data
-    lat_min = max(actual_lat_min - 1, -90)
-    lat_max = min(actual_lat_max + 1, 90)
-    lon_min = max(actual_lon_min - 1, -180)
-    lon_max = min(actual_lon_max + 1, 180)
-
+    # Create regular output grid
     lat_range = np.arange(lat_min, lat_max + output_resolution, output_resolution)
     lon_range = np.arange(lon_min, lon_max + output_resolution, output_resolution)
 
     grid_lon, grid_lat = np.meshgrid(lon_range, lat_range)
 
-    print(f"  Output grid: {len(lat_range)}x{len(lon_range)} points ({lat_range[0]:.1f}° to {lat_range[-1]:.1f}°, {lon_range[0]:.1f}° to {lon_range[-1]:.1f}°)")
+    print(f"  Output grid: {len(lat_range)} x {len(lon_range)} = {len(lat_range) * len(lon_range):,} points")
     print(f"  Input points: {len(values):,} valid data points")
 
-    # Interpolate to regular grid using nearest neighbor (faster and preserves discrete radar values)
+    # Interpolate to regular grid using nearest neighbor (preserves discrete radar values)
     grid_data = griddata(points, values, (grid_lon, grid_lat), method='nearest', fill_value=np.nan)
 
     print(f"  Regridding complete: {grid_data.shape}")
@@ -360,7 +365,7 @@ def create_png_tile(data: np.ndarray, output_path: Path):
 def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
     """
     Process a single GRIB file and create web assets.
-    Reprojects rotated grid data to regular geographic grid.
+    Reprojects RRFS rotated grid to regular grid focused on North America.
     """
     print(f"\nProcessing {grib_file.name}...")
 
@@ -382,13 +387,14 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
         print(f"  Skipping {grib_file.name} - no GRIB library available")
         return None
 
-    # Reproject to regular geographic grid
+    # Reproject to regular geographic grid focused on North America
     try:
         regridded_data, grid_lats, grid_lons = reproject_to_regular_grid(
             result['data'],
             result['lats'],
             result['lons'],
-            output_resolution=0.05  # 0.05 degree = ~5.5km resolution
+            output_resolution=0.05,  # 0.05 degree = ~5.5km resolution
+            focus_region=NA_BOUNDS  # Focus on North America region
         )
 
         # Get actual bounds from regridded data
@@ -399,19 +405,15 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
 
     except Exception as e:
         print(f"  Error during reprojection: {e}")
-        print(f"  Falling back to original data")
-        regridded_data = result['data']
-        # Use original bounds if reprojection failed
-        actual_lat_min = result['grid_info'].get('lat_min', NA_BOUNDS['lat_min'])
-        actual_lat_max = result['grid_info'].get('lat_max', NA_BOUNDS['lat_max'])
-        actual_lon_min = result['grid_info'].get('lon_min', NA_BOUNDS['lon_min'])
-        actual_lon_max = result['grid_info'].get('lon_max', NA_BOUNDS['lon_max'])
+        import traceback
+        traceback.print_exc()
+        return None
 
     # Create PNG tile from reprojected data
     tile_path = TILES_DIR / f"refc_f{forecast_hour:03d}.png"
     create_png_tile(regridded_data, tile_path)
 
-    # Create metadata with actual data bounds
+    # Create metadata with actual reprojected bounds
     metadata = {
         'forecast_hour': forecast_hour,
         'file': grib_file.name,
@@ -423,8 +425,8 @@ def process_grib_file(grib_file: Path, forecast_hour: int) -> dict:
             'lon_max': actual_lon_max,
             'projection': 'regular_ll',
             'reprojected': True,
-            'original_projection': result['grid_info'].get('projection', 'unknown'),
-            'source_grid': 'RRFS_NA_3km'
+            'source_grid': 'RRFS_NA_3km',
+            'original_projection': result['grid_info'].get('projection', 'rotated_ll')
         },
         'stats': {
             'min': float(np.nanmin(regridded_data)),
