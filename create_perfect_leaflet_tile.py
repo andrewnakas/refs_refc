@@ -28,24 +28,24 @@ DATA_DIR = Path("rrfs_data")
 OUTPUT_DIR = Path("docs")
 TILES_DIR = OUTPUT_DIR / "tiles"
 
-# NWS Radar colors (official)
+# NWS Radar colors (official) - RGBA format
 REFC_COLORS = [
-    (0, (0, 0, 0, 0)),           # Transparent
-    (5, (4, 233, 231)),          # Light blue
-    (10, (1, 159, 244)),         # Blue
-    (15, (3, 0, 244)),           # Dark blue
-    (20, (2, 253, 2)),           # Green
-    (25, (1, 197, 1)),           # Dark green
-    (30, (0, 142, 0)),           # Forest green
-    (35, (253, 248, 2)),         # Yellow
-    (40, (229, 188, 0)),         # Gold
-    (45, (253, 149, 0)),         # Orange
-    (50, (253, 0, 0)),           # Red
-    (55, (212, 0, 0)),           # Dark red
-    (60, (188, 0, 0)),           # Maroon
-    (65, (248, 0, 253)),         # Magenta
-    (70, (152, 84, 198)),        # Purple
-    (75, (253, 253, 253)),       # White
+    (0, (0, 0, 0, 0)),             # Transparent
+    (5, (4, 233, 231, 255)),       # Light blue
+    (10, (1, 159, 244, 255)),      # Blue
+    (15, (3, 0, 244, 255)),        # Dark blue
+    (20, (2, 253, 2, 255)),        # Green
+    (25, (1, 197, 1, 255)),        # Dark green
+    (30, (0, 142, 0, 255)),        # Forest green
+    (35, (253, 248, 2, 255)),      # Yellow
+    (40, (229, 188, 0, 255)),      # Gold
+    (45, (253, 149, 0, 255)),      # Orange
+    (50, (253, 0, 0, 255)),        # Red
+    (55, (212, 0, 0, 255)),        # Dark red
+    (60, (188, 0, 0, 255)),        # Maroon
+    (65, (248, 0, 253, 255)),      # Magenta
+    (70, (152, 84, 198, 255)),     # Purple
+    (75, (253, 253, 253, 255)),    # White
 ]
 
 
