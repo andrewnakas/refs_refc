@@ -51,8 +51,7 @@ jobs:
       - name: Download RRFS REFC data
         run: |
           mkdir -p rrfs_data
-          python download_rrfs_refc_optimized.py --domain na --forecast-hours 0
-        continue-on-error: true
+          python download_rrfs_refc_optimized.py --domain na --num-forecasts 1
 
       - name: List downloaded files
         run: |
