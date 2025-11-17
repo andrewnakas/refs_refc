@@ -20,6 +20,13 @@ venv/
 Thumbs.db
 
 # Data (downloaded fresh by workflow)
-rrfs_data/*.grib2
-rrfs_data/*.grib2.idx
-rrfs_data/metadata.json
+rrfs_data/
+
+# Generated visualizations (created by workflow)
+docs/tiles/refc_perfect.png
+docs/perfect_tile.json
+docs/maps/
+docs/maps_data.json
+
+# Test/debug files
+grid_analysis.png
