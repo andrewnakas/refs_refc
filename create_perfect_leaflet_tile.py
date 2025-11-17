@@ -129,18 +129,49 @@ def create_perfect_leaflet_image(data, lats, lons, output_path, target_width=300
     Create pixel-perfect rectangular image for Leaflet overlay.
 
     Returns the EXACT geographic bounds from the GRIB data.
+    Uses ONLY valid data points (ignores NaN/fill values).
     """
     print(f"\nCreating perfect Leaflet image...")
 
-    # Get EXACT bounds from the GRIB data
-    lat_min = float(np.nanmin(lats))
-    lat_max = float(np.nanmax(lats))
-    lon_min = float(np.nanmin(lons))
-    lon_max = float(np.nanmax(lons))
+    # Filter to VALID data points only (ignore NaN and fill values)
+    valid_mask = ~np.isnan(data) & (data > -999)
+    valid_data = data[valid_mask]
+    valid_lats = lats[valid_mask]
+    valid_lons = lons[valid_mask]
 
-    print(f"  EXACT bounds from GRIB:")
-    print(f"    Latitude:  {lat_min:.6f} to {lat_max:.6f}")
-    print(f"    Longitude: {lon_min:.6f} to {lon_max:.6f}")
+    print(f"  Valid data points: {len(valid_data):,} / {data.size:,}")
+
+    if len(valid_data) == 0:
+        raise ValueError("No valid data points found!")
+
+    # Exclude artifacts: longitude 0-140° (only 0.8% of data, likely pole artifacts)
+    # Keep Western Hemisphere (-180 to 0) and dateline wrap (140-180)
+    artifact_mask = (valid_lons >= 0) & (valid_lons < 140)
+    clean_mask = ~artifact_mask
+
+    valid_data = valid_data[clean_mask]
+    valid_lats = valid_lats[clean_mask]
+    valid_lons = valid_lons[clean_mask]
+
+    print(f"  After excluding artifacts: {len(valid_data):,} points")
+
+    # Handle longitude wrapping for North America (unwrap dateline crossings)
+    # Unwrap values > 140°E (Western Alaska/Aleutians) to negative
+    # E.g., 175°E -> -185°W
+    unwrapped_lons = valid_lons.copy()
+    wrap_mask = unwrapped_lons > 140
+    unwrapped_lons[wrap_mask] = unwrapped_lons[wrap_mask] - 360
+
+    # Get EXACT bounds from CLEAN data points only
+    # Use 0.1% and 99.9% percentiles to exclude single outlier points
+    lat_min = float(np.percentile(valid_lats, 0.1))
+    lat_max = float(np.percentile(valid_lats, 99.9))
+    lon_min = float(np.percentile(unwrapped_lons, 0.1))
+    lon_max = float(np.percentile(unwrapped_lons, 99.9))
+
+    print(f"\n  EXACT bounds from VALID GRIB data (99.8% coverage):")
+    print(f"    Latitude:  {lat_min:.6f}° to {lat_max:.6f}°")
+    print(f"    Longitude: {lon_min:.6f}° to {lon_max:.6f}°")
 
     # Calculate native grid aspect ratio from data
     lat_extent = lat_max - lat_min
@@ -159,14 +190,19 @@ def create_perfect_leaflet_image(data, lats, lons, output_path, target_width=300
     lon_range = np.linspace(lon_min, lon_max, target_width)
     grid_lon, grid_lat = np.meshgrid(lon_range, lat_range)
 
+    # Unwrap ALL longitude values for interpolation (not just valid ones)
+    # Only unwrap values > 140°E (the wrap-around region at the dateline)
+    lons_unwrapped = lons.copy()
+    lons_unwrapped[lons > 140] = lons[lons > 140] - 360
+
     # Flatten input data for griddata
-    points = np.column_stack((lons.flatten(), lats.flatten()))
+    points = np.column_stack((lons_unwrapped.flatten(), lats.flatten()))
     values = data.flatten()
 
     # Remove NaN points
-    valid_mask = ~np.isnan(values)
-    points = points[valid_mask]
-    values = values[valid_mask]
+    valid_mask_flat = ~np.isnan(values)
+    points = points[valid_mask_flat]
+    values = values[valid_mask_flat]
 
     print(f"  Interpolating {len(values):,} valid points...")
 
