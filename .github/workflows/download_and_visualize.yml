@@ -6,10 +6,6 @@ on:
     branches:
       - 'claude/rrfs-refc-leaflet-map-*'
 
-  # Run on a schedule - every hour
-  schedule:
-    - cron: '15 * * * *'  # Every hour at 15 minutes past
-
   # Allow manual triggering
   workflow_dispatch:
 
