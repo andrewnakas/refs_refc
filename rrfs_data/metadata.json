@@ -1,13 +1,25 @@
 {
-  "last_update": "2026-03-01T21:23:40.489702+00:00",
+  "last_update": "2026-03-01T22:24:32.513318+00:00",
   "cycle_date": "20260301",
-  "cycle_hour": "20",
+  "cycle_hour": "21",
   "forecast_range_type": "short",
-  "max_forecast_hour": 1,
-  "files_downloaded": 2,
+  "max_forecast_hour": 3,
+  "files_downloaded": 14,
   "file_list": [
-    "rrfs.t20z.prslev.3km.f000.na.grib2",
-    "rrfs.t20z.prslev.3km.f000.na.grib2.idx"
+    "rrfs.t21z.prslev.3km.f000.na.grib2",
+    "rrfs.t21z.prslev.3km.f000.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.f001.na.grib2",
+    "rrfs.t21z.prslev.3km.f001.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.f002.na.grib2",
+    "rrfs.t21z.prslev.3km.f002.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.f003.na.grib2",
+    "rrfs.t21z.prslev.3km.f003.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.subh.f001.na.grib2",
+    "rrfs.t21z.prslev.3km.subh.f001.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.subh.f002.na.grib2",
+    "rrfs.t21z.prslev.3km.subh.f002.na.grib2.idx",
+    "rrfs.t21z.prslev.3km.subh.f003.na.grib2",
+    "rrfs.t21z.prslev.3km.subh.f003.na.grib2.idx"
   ],
   "note": "Files contain REFC field only (extracted via byte-range request)"
 }
