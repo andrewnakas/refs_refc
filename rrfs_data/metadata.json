@@ -1,15 +1,13 @@
 {
-  "last_update": "2026-04-01T05:24:21.918323+00:00",
+  "last_update": "2026-04-01T07:21:11.049629+00:00",
   "cycle_date": "20260401",
-  "cycle_hour": "04",
+  "cycle_hour": "06",
   "forecast_range_type": "short",
-  "max_forecast_hour": 1,
-  "files_downloaded": 4,
+  "max_forecast_hour": 0,
+  "files_downloaded": 2,
   "file_list": [
-    "rrfs.t04z.prslev.3km.f000.na.grib2",
-    "rrfs.t04z.prslev.3km.f000.na.grib2.idx",
-    "rrfs.t04z.prslev.3km.subh.f001.na.grib2",
-    "rrfs.t04z.prslev.3km.subh.f001.na.grib2.idx"
+    "rrfs.t06z.prslev.3km.f000.na.grib2",
+    "rrfs.t06z.prslev.3km.f000.na.grib2.idx"
   ],
   "note": "Files contain REFC field only (extracted via byte-range request)"
 }
