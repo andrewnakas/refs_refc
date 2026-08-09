@@ -1,10 +1,10 @@
 {
-  "last_update": "2026-08-08T06:52:10.981949+00:00",
-  "cycle_date": "20260808",
+  "last_update": "2026-08-09T06:55:35.540108+00:00",
+  "cycle_date": "20260809",
   "cycle_hour": "05",
   "forecast_range_type": "short",
-  "max_forecast_hour": 17,
-  "files_downloaded": 34,
+  "max_forecast_hour": 18,
+  "files_downloaded": 38,
   "file_list": [
     "rrfs.t05z.prslev.3km.f000.na.grib2",
     "rrfs.t05z.prslev.3km.f000.na.grib2.idx",
@@ -38,8 +38,12 @@
     "rrfs.t05z.prslev.3km.f014.na.grib2.idx",
     "rrfs.t05z.prslev.3km.f015.na.grib2",
     "rrfs.t05z.prslev.3km.f015.na.grib2.idx",
+    "rrfs.t05z.prslev.3km.f016.na.grib2",
     "rrfs.t05z.prslev.3km.f016.na.grib2.idx",
-    "rrfs.t05z.prslev.3km.f017.na.grib2.idx"
+    "rrfs.t05z.prslev.3km.f017.na.grib2",
+    "rrfs.t05z.prslev.3km.f017.na.grib2.idx",
+    "rrfs.t05z.prslev.3km.f018.na.grib2",
+    "rrfs.t05z.prslev.3km.f018.na.grib2.idx"
   ],
   "note": "Files contain REFC field only (extracted via byte-range request)"
 }
